@@ -1,0 +1,177 @@
+Filename: main.zig
+const std = @import("std");
+const net = std.net;
+const thread = std.Thread;
+const parser = @import("parser.zig");
+
+pub fn main() !void {
+    const stdout = std.io.getStdOut().writer();
+
+    try stdout.print("Logs from your program will appear here!\n", .{});
+
+    const address = try net.Address.resolveIp("127.0.0.1", 6379);
+
+    var listener = try address.listen(.{
+        .reuse_address = true,
+    });
+    defer listener.deinit();
+
+    while (true) {
+        const connection = try listener.accept();
+
+        try stdout.print("accepted new connection\n", .{});
+
+        var t = try thread.spawn(.{}, handleConnection, .{connection});
+        t.detach();
+    }
+}
+
+fn handleConnection(connection: net.Server.Connection) !void {
+    var buffer: [1024]u8 = undefined;
+    defer connection.stream.close();
+
+    const conReader = connection.stream.reader();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    while (true) {
+        const bytesRead = try conReader.read(&buffer);
+        if (bytesRead == 0) break;
+
+        const data = buffer[0..bytesRead];
+
+        const command = parser.parseCommand(data);
+        const response = try parser.handleCommand(allocator, command, data);
+        defer allocator.free(response);
+
+        try connection.stream.writeAll(response);
+    }
+}
+
+Filename: parser.zig
+const std = @import("std");
+
+const ping = "*1\r\n$4\r\nPING\r\n";
+const pong = "+PONG\r\n";
+const echo = "*2\r\n$4\r\nECHO\r\n";
+pub const Command = enum {
+    Echo,
+    Ping,
+    Unknown,
+};
+
+pub fn parseCommand(input: []const u8) Command {
+    if (std.mem.startsWith(u8, input, "ECHO")) {
+        return Command.Echo;
+    } else if (std.mem.startsWith(u8, input, "PING")) {
+        return Command.Ping;
+    } else {
+        return Command.Unknown;
+    }
+}
+
+pub fn handleCommand(allocator: std.mem.Allocator, command: Command, input: []const u8) ![]const u8 {
+    switch (command) {
+        Command.Echo => {
+            const messageStart = std.mem.indexOf(u8, input, echo) orelse return "-ERR invalid format\r\n";
+            const messageEnd = std.mem.indexOf(u8, input[messageStart + echo.len ..], "\r\n") orelse return "-ERR invalid format\r\n";
+            const message = input[messageStart + echo.len .. messageEnd];
+            const response = try std.fmt.allocPrint(allocator, "{d}\\r\\n{s}\\r\\n", .{ message.len, message });
+            return response;
+        },
+        Command.Ping => return pong,
+        Command.Unknown => return "-ERR unknown command\r\n",
+    }
+}
+
+Filename: main.zig
+const std = @import("std");
+const net = std.net;
+const thread = std.Thread;
+const parser = @import("parser.zig");
+
+pub fn main() !void {
+    const stdout = std.io.getStdOut().writer();
+
+    try stdout.print("Logs from your program will appear here!\n", .{});
+
+    const address = try net.Address.resolveIp("127.0.0.1", 6379);
+
+    var listener = try address.listen(.{
+        .reuse_address = true,
+    });
+    defer listener.deinit();
+
+    while (true) {
+        const connection = try listener.accept();
+
+        try stdout.print("accepted new connection\n", .{});
+
+        var t = try thread.spawn(.{}, handleConnection, .{connection});
+        t.detach();
+    }
+}
+
+fn handleConnection(connection: net.Server.Connection) !void {
+    var buffer: [1024]u8 = undefined;
+    defer connection.stream.close();
+
+    const conReader = connection.stream.reader();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    while (true) {
+        const bytesRead = try conReader.read(&buffer);
+        if (bytesRead == 0) break;
+
+        const data = buffer[0..bytesRead];
+
+        const command = parser.parseCommand(data);
+        const response = try parser.handleCommand(allocator, command, data);
+        defer allocator.free(response);
+
+        try connection.stream.writeAll(response);
+    }
+}
+
+Filename: parser.zig
+const std = @import("std");
+
+const ping = "*1\r\n$4\r\nPING\r\n";
+const pong = "+PONG\r\n";
+
+pub const Command = enum {
+    Echo,
+    Ping,
+    Unknown,
+};
+
+pub fn parseCommand(input: []const u8) Command {
+    if (std.mem.startsWith(u8, input, "*2\r\n$4\r\nECHO\r\n")) {
+        return Command.Echo;
+    } else if (std.mem.startsWith(u8, input, ping)) {
+        return Command.Ping;
+    } else {
+        return Command.Unknown;
+    }
+}
+
+pub fn handleCommand(allocator: std.mem.Allocator, command: Command, input: []const u8) ![]const u8 {
+    switch (command) {
+        Command.Echo => {
+            const messageLenStart = std.mem.indexOf(u8, input, "$") orelse return "-ERR invalid format\r\n";
+            const messageLenEnd = std.mem.indexOf(u8, input[messageLenStart + 1 ..], "\r\n") orelse return "-ERR invalid format\r\n";
+            const messageLen = std.fmt.parseInt(usize, input[messageLenStart + 1 .. messageLenEnd + messageLenStart + 1], 10) catch return "-ERR invalid format\r\n";
+            const messageStart = messageLenEnd + messageLenStart + 3;
+            const messageEnd = messageStart + messageLen;
+            const message = input[messageStart..messageEnd];
+            const response = try std.fmt.allocPrint(allocator, "${d}\r\n{s}\r\n", .{message.len, message});
+            return response;
+        },
+        Command.Ping => return pong,
+        Command.Unknown => return "-ERR unknown command\r\n",
+    }
+}
+
