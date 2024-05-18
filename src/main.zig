@@ -26,7 +26,7 @@ pub fn main() !void {
         const conReader = connection.stream.reader();
 
         while (try conReader.read(&buffer) > 0) {
-            _ = connection.stream.writeAll("+PONG\r\n");
+            try connection.stream.writeAll("+PONG\r\n");
         }
 
         connection.stream.close();
