@@ -23,11 +23,10 @@ pub fn main() !void {
         try stdout.print("accepted new connection", .{});
 
         var buffer: [1024]u8 = undefined;
-        const read_bytes = try connection.stream.read(&buffer);
-        const message = buffer[0..read_bytes];
+        const conReader = connection.stream.reader();
 
-        if (std.mem.startsWith(u8, message, "PING")) {
-            _ = try connection.stream.write("+PONG\r\n");
+        while (try conReader.read(&buffer) > 0) {
+            _ = connection.stream.writeAll("+PONG\r\n");
         }
 
         connection.stream.close();
