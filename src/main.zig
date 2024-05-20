@@ -1,23 +1,40 @@
 const std = @import("std");
+const log = std.log;
 const net = std.net;
 const Thread = std.Thread;
 const Parser = @import("parser.zig").Parser;
 
+const DEFAULT_PORT = 6379;
+
 pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+    log.info("Logs from your program will appear here!\n", .{});
 
-    try stdout.print("Logs from your program will appear here!\n", .{});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
 
-    const address = try net.Address.resolveIp("127.0.0.1", 6379);
+    const allocator = gpa.allocator();
+
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    const port = blk: {
+        for (args[1..], 1..) |arg, i| {
+            if (std.mem.eql(u8, arg, "--port")) {
+                if (i + 1 < args.len) {
+                    break :blk try std.fmt.parseUnsigned(u16, args[i + 1], 10);
+                }
+            }
+        }
+        break :blk DEFAULT_PORT;
+    };
+
+    const address = try net.Address.resolveIp("127.0.0.1", port);
+    log.info("Server started on 127.0.0.1:{d}", .{port});
 
     var listener = try address.listen(.{
         .reuse_address = true,
     });
     defer listener.deinit();
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
 
     var parser = Parser.init(allocator);
     defer parser.deinit();

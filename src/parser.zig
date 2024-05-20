@@ -116,89 +116,105 @@ pub const Parser = struct {
         log.info("Handling command: {s}", .{args[0]});
 
         if (eqlIgnoreCase(args[0], "ping")) {
-            if (args.len != 1) {
-                log.err("Invalid number of arguments for PING command. Expected 1, got {}.", .{args.len});
-                return ParseError.InvalidCommand;
-            }
-            log.info("Received PING command", .{});
-            return Command.Ping;
+            return self.handlePingCommand(args);
         }
 
         if (eqlIgnoreCase(args[0], "echo")) {
-            if (args.len != 2) {
-                log.err("Invalid number of arguments for ECHO command. Expected 2, got {}.", .{args.len});
-                return ParseError.InvalidCommand;
-            }
-            log.info("Received ECHO command with message: {s}", .{args[1]});
-            return Command{ .Echo = args[1] };
+            return self.handleEchoCommand(args);
         }
 
         if (eqlIgnoreCase(args[0], "get")) {
-            if (args.len != 2) {
-                log.err("Invalid number of arguments for GET command. Expected 2, got {}.", .{args.len});
-                return ParseError.InvalidCommand;
-            }
-            const key = args[1];
-            log.info("Received GET command for key: {s}", .{key});
-
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            if (self.cache.get(key)) |item| {
-                log.info("Value: {s}, {?}", .{ item.value, item.expiration });
-                if (item.expiration) |exp| {
-                    const now: u64 = @intCast(time.milliTimestamp());
-                    log.info("Now: {}", .{now});
-                    if (now > exp) {
-                        log.info("Key {s} has expired, removing from cache", .{key});
-                        _ = self.cache.remove(key);
-                        return Command{ .Get = "" };
-                    }
-                }
-                log.info("Found value for key {s}: {s}", .{ key, item.value });
-                return Command{ .Get = item.value };
-            } else {
-                log.info("Key {s} not found in cache", .{key});
-                return Command{ .Get = "" };
-            }
+            return self.handleGetCommand(args);
         }
 
         if (eqlIgnoreCase(args[0], "set")) {
-            if (args.len != 3 and args.len != 5) {
-                log.err("Invalid number of arguments for SET command. Expected 3 or 5, got {}. Available args: {s}", .{ args.len, args });
-                return ParseError.InvalidCommand;
-            }
-            const key = args[1];
-            const value = args[2];
-            var expiration: ?u64 = null;
-            log.info("Received SET command for key {s} with value {s}", .{ key, value });
-
-            if (args.len == 5) {
-                if (!eqlIgnoreCase(args[3], "px")) {
-                    log.err("Invalid expiration format. Expected 'px', got {s}", .{args[3]});
-                    return ParseError.InvalidCommand;
-                }
-                expiration = std.fmt.parseInt(u64, args[4], 10) catch {
-                    log.err("Invalid expiration value: {s}", .{args[4]});
-                    return ParseError.InvalidCommand;
-                };
-                log.info("Setting expiration to {d} milliseconds", .{expiration.?});
-            }
-
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            const now: u64 = @intCast(time.milliTimestamp());
-            try self.cache.put(key, Item{
-                .value = value,
-                .expiration = if (expiration) |exp| now + exp else null,
-            });
-            log.info("Key {s} set successfully", .{key});
-            return Command.Set;
+            return self.handleSetCommand(args);
         }
 
         log.err("Invalid command: {s}", .{args[0]});
         return ParseError.InvalidCommand;
+    }
+
+    fn handlePingCommand(_: *Parser, args: [][]const u8) !Command {
+        if (args.len != 1) {
+            log.err("Invalid number of arguments for PING command. Expected 1, got {}.", .{args.len});
+            return ParseError.InvalidCommand;
+        }
+        log.info("Received PING command", .{});
+        return Command.Ping;
+    }
+
+    fn handleEchoCommand(_: *Parser, args: [][]const u8) !Command {
+        if (args.len != 2) {
+            log.err("Invalid number of arguments for ECHO command. Expected 2, got {}.", .{args.len});
+            return ParseError.InvalidCommand;
+        }
+        log.info("Received ECHO command with message: {s}", .{args[1]});
+        return Command{ .Echo = args[1] };
+    }
+
+    fn handleGetCommand(self: *Parser, args: [][]const u8) !Command {
+        if (args.len != 2) {
+            log.err("Invalid number of arguments for GET command. Expected 2, got {}.", .{args.len});
+            return ParseError.InvalidCommand;
+        }
+        const key = args[1];
+        log.info("Received GET command for key: {s}", .{key});
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.cache.get(key)) |item| {
+            log.info("Value: {s}, {?}", .{ item.value, item.expiration });
+            if (item.expiration) |exp| {
+                const now: u64 = @intCast(time.milliTimestamp());
+                log.info("Now: {}", .{now});
+                if (now > exp) {
+                    log.info("Key {s} has expired, removing from cache", .{key});
+                    _ = self.cache.remove(key);
+                    return Command{ .Get = "" };
+                }
+            }
+            log.info("Found value for key {s}: {s}", .{ key, item.value });
+            return Command{ .Get = item.value };
+        } else {
+            log.info("Key {s} not found in cache", .{key});
+            return Command{ .Get = "" };
+        }
+    }
+
+    fn handleSetCommand(self: *Parser, args: [][]const u8) !Command {
+        if (args.len != 3 and args.len != 5) {
+            log.err("Invalid number of arguments for SET command. Expected 3 or 5, got {}. Available args: {s}", .{ args.len, args });
+            return ParseError.InvalidCommand;
+        }
+        const key = args[1];
+        const value = args[2];
+        var expiration: ?u64 = null;
+        log.info("Received SET command for key {s} with value {s}", .{ key, value });
+
+        if (args.len == 5) {
+            if (!eqlIgnoreCase(args[3], "px")) {
+                log.err("Invalid expiration format. Expected 'px', got {s}", .{args[3]});
+                return ParseError.InvalidCommand;
+            }
+            expiration = std.fmt.parseInt(u64, args[4], 10) catch {
+                log.err("Invalid expiration value: {s}", .{args[4]});
+                return ParseError.InvalidCommand;
+            };
+            log.info("Setting expiration to {d} milliseconds", .{expiration.?});
+        }
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const now: u64 = @intCast(time.milliTimestamp());
+        try self.cache.put(key, Item{
+            .value = value,
+            .expiration = if (expiration) |exp| now + exp else null,
+        });
+        log.info("Key {s} set successfully", .{key});
+        return Command.Set;
     }
 
     pub fn handleConnection(self: *Parser, connection: std.net.Server.Connection) !void {
@@ -229,7 +245,7 @@ pub const Parser = struct {
                     switch (command) {
                         .Echo => self.allocator.free(response),
                         .Get => |val| if (val.len != 0) self.allocator.free(response),
-                        else => {},
+                        .Ping, .Set, .Unknown => {},
                     }
                 }
 
