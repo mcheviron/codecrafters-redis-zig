@@ -2,7 +2,7 @@ const std = @import("std");
 const log = std.log;
 const net = std.net;
 const Thread = std.Thread;
-const Parser = @import("parser.zig").Parser;
+const Cache = @import("cache.zig").Cache;
 
 const DEFAULT_PORT = 6379;
 
@@ -36,17 +36,17 @@ pub fn main() !void {
     });
     defer listener.deinit();
 
-    var parser = Parser.init(allocator);
-    defer parser.deinit();
+    var cache = Cache.init(allocator);
+    defer cache.deinit();
 
     while (true) {
         const connection = try listener.accept();
 
-        const t = try Thread.spawn(.{}, handleConnection, .{ connection, &parser });
+        const t = try Thread.spawn(.{}, handleConnection, .{ connection, &cache });
         t.detach();
     }
 }
 
-fn handleConnection(connection: net.Server.Connection, parser: *Parser) !void {
-    try parser.handleConnection(connection);
+fn handleConnection(connection: net.Server.Connection, cache: *Cache) !void {
+    try cache.handleConnection(connection);
 }
