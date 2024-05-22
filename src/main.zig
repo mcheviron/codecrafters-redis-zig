@@ -8,8 +8,6 @@ const Role = @import("cache.zig").Cache.Role;
 const DEFAULT_PORT = 6379;
 
 pub fn main() !void {
-    log.info("Logs from your program will appear here!\n", .{});
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() != .ok) @panic("leak occured");
 
@@ -37,7 +35,12 @@ pub fn main() !void {
                 }
             }
         }
-        break :blk Role.Master;
+        break :blk Role{
+            .Master = .{
+                .master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+                .master_repl_offset = 0,
+            },
+        };
     };
 
     const address = try net.Address.resolveIp("127.0.0.1", port);

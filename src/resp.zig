@@ -8,16 +8,33 @@ const eqlIgnoreCase = std.ascii.eqlIgnoreCase;
 
 pub const Resp = struct {
     allocator: Allocator,
-    role: Role,
 
     pub const Command = union(enum) {
         Ping,
         Unknown,
+        Info,
         Echo: []const u8,
         Get: []const u8,
-        Info,
         Set: SetCommand,
     };
+
+    pub const Response = union(enum) {
+        Pong,
+        Echo: []const u8,
+        Get: ?[]const u8,
+        Set,
+        Info: InfoResponse,
+        Unknown,
+
+        pub const InfoResponse = union(enum) {
+            Master: struct {
+                master_replid: []const u8,
+                master_repl_offset: u64,
+            },
+            Slave,
+        };
+    };
+
     pub const SetCommand = struct {
         key: []const u8,
         value: []const u8,
@@ -31,10 +48,9 @@ pub const Resp = struct {
         InvalidCommand,
     };
 
-    pub fn init(allocator: Allocator, role: Role) Resp {
+    pub fn init(allocator: Allocator) Resp {
         return Resp{
             .allocator = allocator,
-            .role = role,
         };
     }
 
@@ -78,7 +94,7 @@ pub const Resp = struct {
                         // Parse the argument value
                         // Example: "ECHO" => arg = "ECHO"
                         const arg = it.next() orelse return ParseError.InvalidCommand;
-                        log.info("arg.len: {d}, len: {d}\n", .{ arg.len, len });
+                        // log.info("arg.len: {d}, len: {d}\n", .{ arg.len, len });
                         if (arg.len != len) return ParseError.ArgLenMismatch;
                         try args.append(arg);
                     }
@@ -103,20 +119,21 @@ pub const Resp = struct {
     /// Encodes a list of RESP commands into a byte slice.
     ///
     /// The returned slice must be freed by the caller.
-    pub fn encode(self: *Resp, commands: []const Command) ![]const u8 {
+    pub fn encode(self: *Resp, responses: []const Response) ![]const u8 {
         var result = ArrayList(u8).init(self.allocator);
         errdefer result.deinit();
 
-        for (commands) |command| {
-            const response = switch (command) {
-                .Ping => try self.encodePong(),
+        const writer = result.writer();
+        for (responses) |response| {
+            const encoded_response = switch (response) {
+                .Pong => try self.encodePong(),
                 .Echo => |message| try self.encodeEcho(message),
-                .Get => |key| try self.encodeGet(key),
+                .Get => |value| try self.encodeGet(value),
                 .Set => try self.encodeSet(),
-                .Info => try self.encodeInfo(),
+                .Info => |info| try self.encodeInfo(info),
                 .Unknown => try self.encodeUnknownCommand(),
             };
-            try result.appendSlice(response);
+            try writer.print("{s}", .{encoded_response});
         }
 
         return result.toOwnedSlice();
@@ -144,7 +161,6 @@ pub const Resp = struct {
             }
             return Command{ .Set = .{ .key = key, .value = value, .expiration = expiration } };
         } else if (eqlIgnoreCase(args[0], "info")) {
-            if (args.len != 2) return ParseError.InvalidNumArgs;
             return Command.Info;
         }
 
@@ -171,11 +187,27 @@ pub const Resp = struct {
         return self.encodeSimpleString("+OK\r\n");
     }
 
-    fn encodeInfo(self: *Resp) ![]const u8 {
-        return self.encodeBulkString(switch (self.role) {
-            .Master => "role:master",
-            .Slave => "role:slave",
-        });
+    fn encodeInfo(self: *Resp, info: Response.InfoResponse) ![]const u8 {
+        var result = ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+
+        const writer = result.writer();
+
+        switch (info) {
+            .Master => |master_info| {
+                var buf: [1024]u8 = undefined;
+                const full_info = try std.fmt.bufPrint(&buf, "role:master\nmaster_replid:{s}\nmaster_repl_offset:{d}\n", .{ master_info.master_replid, master_info.master_repl_offset });
+
+                const encoded = try self.encodeBulkString(full_info);
+                try writer.print("{s}", .{encoded});
+            },
+            .Slave => {
+                const role_slave = try self.encodeBulkString("role:slave");
+                try writer.print("{s}", .{role_slave});
+            },
+        }
+
+        return result.toOwnedSlice();
     }
 
     fn encodeUnknownCommand(self: *Resp) ![]const u8 {
@@ -185,7 +217,7 @@ pub const Resp = struct {
     fn encodeSimpleString(self: *Resp, str: []const u8) ![]const u8 {
         var result = ArrayList(u8).init(self.allocator);
         errdefer result.deinit();
-        try result.appendSlice(str);
+        try result.writer().print("{s}", .{str});
         return result.toOwnedSlice();
     }
 

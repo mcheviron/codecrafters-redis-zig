@@ -1,0 +1,482 @@
+const std = @import("std");
+const log = std.log;
+const net = std.net;
+const Thread = std.Thread;
+const Cache = @import("cache.zig").Cache;
+const Role = @import("cache.zig").Cache.Role;
+
+const DEFAULT_PORT = 6379;
+
+pub fn main() !void {
+    log.info("Logs from your program will appear here!\n", .{});
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+
+    const allocator = gpa.allocator();
+
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    const port = blk: {
+        for (args[1..], 1..) |arg, i| {
+            if (std.mem.eql(u8, arg, "--port")) {
+                if (i + 1 < args.len) {
+                    break :blk try std.fmt.parseUnsigned(u16, args[i + 1], 10);
+                }
+            }
+        }
+        break :blk DEFAULT_PORT;
+    };
+
+    const role = blk: {
+        for (args[1..], 1..) |arg, i| {
+            if (std.mem.eql(u8, arg, "--replicaof")) {
+                if (i + 1 < args.len) {
+                    break :blk Role{ .Slave = args[i + 1] };
+                }
+            }
+        }
+        break :blk Role{
+            .Master = .{
+                .master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+                .master_replid_offset = 0,
+            },
+        };
+    };
+
+    const address = try net.Address.resolveIp("127.0.0.1", port);
+    log.info("Server started on 127.0.0.1:{d}", .{port});
+
+    var listener = try address.listen(.{
+        .reuse_address = true,
+    });
+    defer listener.deinit();
+
+    var cache = Cache.init(allocator, role);
+    defer cache.deinit();
+
+    while (true) {
+        const connection = try listener.accept();
+
+        const t = try Thread.spawn(.{}, handleConnection, .{ connection, &cache });
+        t.detach();
+    }
+}
+
+fn handleConnection(connection: net.Server.Connection, cache: *Cache) !void {
+    try cache.handleConnection(connection);
+}
+const std = @import("std");
+
+// Learn more about this file here: https://ziglang.org/learn/build-system
+pub fn build(b: *std.Build) void {
+    const exe = b.addExecutable(.{
+        .name = "zig",
+        .root_source_file = b.path("src/main.zig"),
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+    });
+
+    // This declares intent for the executable to be installed into the
+    // standard location when the user invokes the "install" step (the default
+    // step when running `zig build`).
+    b.installArtifact(exe);
+
+    // This *creates* a Run step in the build graph, to be executed when another
+    // step is evaluated that depends on it. The next line below will establish
+    // such a dependency.
+    const run_cmd = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    // This creates a build step. It will be visible in the `zig build --help` menu,
+    // and can be selected like this: `zig build run`
+    // This will evaluate the `run` step rather than the default, which is "install".
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
+}
+const std = @import("std");
+const mem = std.mem;
+const log = std.log;
+const time = std.time;
+const Allocator = std.mem.Allocator;
+const HashMap = std.StringHashMap;
+const Mutex = std.Thread.Mutex;
+const Resp = @import("resp.zig").Resp;
+const Command = @import("resp.zig").Resp.Command;
+const Response = @import("resp.zig").Resp.Response;
+
+pub const Cache = struct {
+    allocator: Allocator,
+    cache: HashMap(Item),
+    mutex: Mutex,
+    resp: Resp,
+    role: Role,
+
+    pub const MasterInfo = struct {
+        master_replid: []const u8,
+        master_replid_offset: u64,
+    };
+
+    pub const Role = union(enum) {
+        Master: MasterInfo,
+        Slave: []const u8,
+    };
+
+    const Item = struct {
+        value: []const u8,
+        expiration: ?u64,
+    };
+
+    pub fn init(
+        allocator: Allocator,
+        role: Role,
+    ) Cache {
+        return Cache{
+            .allocator = allocator,
+            .cache = HashMap(Item).init(allocator),
+            .mutex = Mutex{},
+            .resp = Resp.init(allocator),
+            .role = role,
+        };
+    }
+
+    pub fn deinit(self: *Cache) void {
+        self.cache.deinit();
+        self.resp.deinit();
+    }
+
+    fn handleGetCommand(self: *Cache, key: []const u8) ![]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.cache.get(key)) |item| {
+            log.info("Value: {s}, {?}", .{ item.value, item.expiration });
+            if (item.expiration) |exp| {
+                const now: u64 = @intCast(time.milliTimestamp());
+                log.info("Now: {}", .{now});
+                if (now > exp) {
+                    log.info("Key {s} has expired, removing from cache", .{key});
+                    _ = self.cache.remove(key);
+                    return self.resp.encode(&[_]Response{Response{ .Get = null }});
+                }
+            }
+            log.info("Found value for key {s}: {s}", .{ key, item.value });
+            return self.resp.encode(&[_]Response{Response{ .Get = item.value }});
+        }
+        log.info("Key {s} not found in cache", .{key});
+        return self.resp.encode(&[_]Response{Response{ .Get = null }});
+    }
+
+    fn handleSetCommand(self: *Cache, set: Resp.SetCommand) ![]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const now: u64 = @intCast(time.milliTimestamp());
+        try self.cache.put(set.key, Item{
+            .value = set.value,
+            .expiration = if (set.expiration) |exp| now + exp else null,
+        });
+        log.info("Key {s} set successfully", .{set.key});
+        return self.resp.encode(&[_]Response{Response.Set});
+    }
+
+    fn handleInfoCommand(self: *Cache) ![]const u8 {
+        const info_response = switch (self.role) {
+            .Master => |master_info| Response{
+                .Info = Response.InfoResponse{
+                    .Master = .{
+                        .master_replid = master_info.master_replid,
+                        .master_replid_offset = master_info.master_replid_offset,
+                    },
+                },
+            },
+            .Slave => Response{
+                .Info = Response.InfoResponse.Slave,
+            },
+        };
+        return self.resp.encode(&[_]Response{info_response});
+    }
+
+    pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
+        log.info("New connection established", .{});
+
+        var buffer: [1024]u8 = undefined;
+        var reader = connection.stream.reader();
+        var writer = connection.stream.writer();
+
+        while (true) {
+            log.info("Waiting to read data from connection", .{});
+            const bytes_read = try reader.read(&buffer);
+            log.info("Bytes read: {}", .{bytes_read});
+            if (bytes_read == 0) break;
+
+            const data = buffer[0..bytes_read];
+            log.info("Data received: {s}", .{data});
+
+            const commandList = try self.resp.decode(data);
+            defer self.allocator.free(commandList);
+
+            for (commandList) |command| {
+                log.info("Command: {}", .{command});
+                const response = blk: {
+                    switch (command) {
+                        .Ping => break :blk try self.resp.encode(&[_]Response{Response.Pong}),
+                        .Echo => |message| break :blk try self.resp.encode(&[_]Response{Response{ .Echo = message }}),
+                        .Get => |key| break :blk try self.handleGetCommand(key),
+                        .Set => |set| break :blk try self.handleSetCommand(set),
+                        .Info => break :blk try self.handleInfoCommand(),
+                        .Unknown => break :blk try self.resp.encode(&[_]Response{Response.Unknown}),
+                    }
+                };
+                defer self.allocator.free(response);
+                log.info("Response: {s}", .{response});
+                try writer.writeAll(response);
+            }
+        }
+    }
+};
+const std = @import("std");
+const mem = std.mem;
+const log = std.log;
+const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
+const Role = @import("cache.zig").Cache.Role;
+const eqlIgnoreCase = std.ascii.eqlIgnoreCase;
+
+pub const Resp = struct {
+    allocator: Allocator,
+
+    pub const Command = union(enum) {
+        Ping,
+        Unknown,
+        Info,
+        Echo: []const u8,
+        Get: []const u8,
+        Set: SetCommand,
+    };
+
+    pub const Response = union(enum) {
+        Pong,
+        Echo: []const u8,
+        Get: ?[]const u8,
+        Set,
+        Info: InfoResponse,
+        Unknown,
+
+        pub const InfoResponse = union(enum) {
+            Master: struct {
+                master_replid: []const u8,
+                master_replid_offset: u64,
+            },
+            Slave,
+        };
+    };
+
+    pub const SetCommand = struct {
+        key: []const u8,
+        value: []const u8,
+        expiration: ?u64,
+    };
+    pub const ParseError = error{
+        InvalidNumArgs,
+        InvalidFormat,
+        InvalidArgLen,
+        ArgLenMismatch,
+        InvalidCommand,
+    };
+
+    pub fn init(allocator: Allocator) Resp {
+        return Resp{
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(_: *Resp) void {}
+
+    /// Decodes the provided input string into a list of RESP commands.
+    ///
+    /// The input string is expected to be in the Redis protocol format.
+    /// The function parses the input, validates the format, and returns
+    /// an owned slice of the parsed commands.
+    ///
+    /// The returned slice must be freed by the caller.
+    pub fn decode(self: *Resp, input: []const u8) ![]Command {
+        var commands = ArrayList(Command).init(self.allocator);
+        errdefer commands.deinit();
+
+        // Split the input string by "\r\n"
+        // Example input: "*2\r\n$4\r\nECHO\r\n$13\r\nHello, World!\r\n*2\r\n$3\r\nGET\r\n$7\r\nmykey\r\n"
+        // Example output after split:
+        // ["*2", "$4", "ECHO", "$13", "Hello, World!", "*2", "$3", "GET", "$7", "mykey", ""]
+        var it = std.mem.splitSequence(u8, input, "\r\n");
+        while (it.next()) |line| {
+            if (line.len <= 1) continue;
+
+            switch (line[0]) {
+                '*' => {
+                    // Parse the number of arguments
+                    // Example: "*2" => numArgs = 2
+                    const numArgs = try std.fmt.parseInt(usize, line[1..], 10);
+                    var args = ArrayList([]const u8).init(self.allocator);
+                    defer args.deinit();
+
+                    var i: usize = 0;
+                    while (i < numArgs) : (i += 1) {
+                        // Parse the argument length
+                        // Example: "$4" => len = 4
+                        const argLen = it.next() orelse return ParseError.InvalidCommand;
+                        if (!std.mem.startsWith(u8, argLen, "$")) return ParseError.InvalidCommand;
+                        const len = try std.fmt.parseInt(usize, argLen[1..], 10);
+
+                        // Parse the argument value
+                        // Example: "ECHO" => arg = "ECHO"
+                        const arg = it.next() orelse return ParseError.InvalidCommand;
+                        log.info("arg.len: {d}, len: {d}\n", .{ arg.len, len });
+                        if (arg.len != len) return ParseError.ArgLenMismatch;
+                        try args.append(arg);
+                    }
+
+                    // Parse the command and append it to the commands list
+                    // Example: ["ECHO", "Hello, World!"] => Command{.Echo = "Hello, World!"}
+                    const command = try self.parseCommand(args.items);
+                    try commands.append(command);
+                },
+                else => return ParseError.InvalidCommand,
+            }
+        }
+
+        // Return the parsed commands as an owned slice
+        // Example: [_][]const u8{
+        //     "ECHO", "Hello, World!",  => Command{.Echo = "Hello, World!"},
+        //     "GET",  "mykey",          => Command{.Get  = "mykey"},
+        // }
+        return commands.toOwnedSlice();
+    }
+
+    /// Encodes a list of RESP commands into a byte slice.
+    ///
+    /// The returned slice must be freed by the caller.
+    pub fn encode(self: *Resp, responses: []const Response) ![]const u8 {
+        var result = ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+
+        for (responses) |response| {
+            const encoded_response = switch (response) {
+                .Pong => try self.encodePong(),
+                .Echo => |message| try self.encodeEcho(message),
+                .Get => |value| try self.encodeGet(value),
+                .Set => try self.encodeSet(),
+                .Info => |info| try self.encodeInfo(info),
+                .Unknown => try self.encodeUnknownCommand(),
+            };
+            try result.appendSlice(encoded_response);
+        }
+
+        return result.toOwnedSlice();
+    }
+
+    fn parseCommand(_: *Resp, args: [][]const u8) !Command {
+        if (args.len == 0) return ParseError.InvalidNumArgs;
+
+        if (eqlIgnoreCase(args[0], "ping")) {
+            return Command.Ping;
+        } else if (eqlIgnoreCase(args[0], "echo")) {
+            if (args.len != 2) return ParseError.InvalidNumArgs;
+            return Command{ .Echo = args[1] };
+        } else if (eqlIgnoreCase(args[0], "get")) {
+            if (args.len != 2) return ParseError.InvalidNumArgs;
+            return Command{ .Get = args[1] };
+        } else if (eqlIgnoreCase(args[0], "set")) {
+            if (args.len != 3 and args.len != 5) return ParseError.InvalidNumArgs;
+            const key = args[1];
+            const value = args[2];
+            var expiration: ?u64 = null;
+            if (args.len == 5) {
+                if (!eqlIgnoreCase(args[3], "PX")) return ParseError.InvalidFormat;
+                expiration = try std.fmt.parseInt(u64, args[4], 10);
+            }
+            return Command{ .Set = .{ .key = key, .value = value, .expiration = expiration } };
+        } else if (eqlIgnoreCase(args[0], "info")) {
+            return Command.Info;
+        }
+
+        return Command.Unknown;
+    }
+
+    fn encodePong(self: *Resp) ![]const u8 {
+        return self.encodeSimpleString("+PONG\r\n");
+    }
+
+    fn encodeEcho(self: *Resp, message: []const u8) ![]const u8 {
+        return self.encodeBulkString(message);
+    }
+
+    fn encodeGet(self: *Resp, value: ?[]const u8) ![]const u8 {
+        if (value) |v| {
+            return self.encodeBulkString(v);
+        } else {
+            return self.encodeNull();
+        }
+    }
+
+    fn encodeSet(self: *Resp) ![]const u8 {
+        return self.encodeSimpleString("+OK\r\n");
+    }
+
+    fn encodeInfo(self: *Resp, info: Response.InfoResponse) ![]const u8 {
+        switch (info) {
+            .Master => |master_info| {
+                var result = ArrayList(u8).init(self.allocator);
+                errdefer result.deinit();
+
+                const role_master = try self.encodeBulkString("role:master");
+                try result.appendSlice(role_master);
+
+                var buf: [1024]u8 = undefined;
+                const master_replid = try std.fmt.bufPrint(&buf, "master_replid:{s}", .{master_info.master_replid});
+                const encoded_master_replid = try self.encodeBulkString(master_replid);
+                try result.appendSlice(encoded_master_replid);
+
+                buf = undefined;
+                const master_replid_offset = try std.fmt.bufPrint(&buf, "master_replid_offset:{d}", .{master_info.master_replid_offset});
+                const encoded_master_replid_offset = try self.encodeBulkString(master_replid_offset);
+                try result.appendSlice(encoded_master_replid_offset);
+
+                return result.toOwnedSlice();
+            },
+            .Slave => return self.encodeBulkString("role:slave"),
+        }
+    }
+
+    fn encodeUnknownCommand(self: *Resp) ![]const u8 {
+        return self.encodeError("unknown command");
+    }
+
+    fn encodeSimpleString(self: *Resp, str: []const u8) ![]const u8 {
+        var result = ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+        try result.appendSlice(str);
+        return result.toOwnedSlice();
+    }
+
+    fn encodeBulkString(self: *Resp, str: []const u8) ![]const u8 {
+        var result = ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+        try result.writer().print("${d}\r\n{s}\r\n", .{ str.len, str });
+        return result.toOwnedSlice();
+    }
+
+    pub fn encodeNull(self: *Resp) ![]const u8 {
+        return self.encodeSimpleString("$-1\r\n");
+    }
+
+    pub fn encodeError(self: *Resp, err: []const u8) ![]const u8 {
+        var result = ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+        try result.writer().print("-ERR {s}\r\n", .{err});
+        return result.toOwnedSlice();
+    }
+};
