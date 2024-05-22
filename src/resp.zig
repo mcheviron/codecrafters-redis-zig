@@ -3,17 +3,19 @@ const mem = std.mem;
 const log = std.log;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Role = @import("cache.zig").Cache.Role;
 const eqlIgnoreCase = std.ascii.eqlIgnoreCase;
 
 pub const Resp = struct {
     allocator: Allocator,
+    role: Role,
 
     pub const Command = union(enum) {
         Ping,
         Unknown,
         Echo: []const u8,
         Get: []const u8,
-        Info: []const u8,
+        Info,
         Set: SetCommand,
     };
     pub const SetCommand = struct {
@@ -29,9 +31,10 @@ pub const Resp = struct {
         InvalidCommand,
     };
 
-    pub fn init(allocator: Allocator) Resp {
+    pub fn init(allocator: Allocator, role: Role) Resp {
         return Resp{
             .allocator = allocator,
+            .role = role,
         };
     }
 
@@ -142,7 +145,7 @@ pub const Resp = struct {
             return Command{ .Set = .{ .key = key, .value = value, .expiration = expiration } };
         } else if (eqlIgnoreCase(args[0], "info")) {
             if (args.len != 2) return ParseError.InvalidNumArgs;
-            return Command{ .Info = args[1] };
+            return Command.Info;
         }
 
         return Command.Unknown;
@@ -169,7 +172,10 @@ pub const Resp = struct {
     }
 
     fn encodeInfo(self: *Resp) ![]const u8 {
-        return self.encodeBulkString("role:master");
+        return self.encodeBulkString(switch (self.role) {
+            .Master => "role:master",
+            .Slave => "role:slave",
+        });
     }
 
     fn encodeUnknownCommand(self: *Resp) ![]const u8 {

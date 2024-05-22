@@ -3,6 +3,7 @@ const log = std.log;
 const net = std.net;
 const Thread = std.Thread;
 const Cache = @import("cache.zig").Cache;
+const Role = @import("cache.zig").Cache.Role;
 
 const DEFAULT_PORT = 6379;
 
@@ -28,6 +29,17 @@ pub fn main() !void {
         break :blk DEFAULT_PORT;
     };
 
+    const role = blk: {
+        for (args[1..], 1..) |arg, i| {
+            if (std.mem.eql(u8, arg, "--replicaof")) {
+                if (i + 1 < args.len) {
+                    break :blk Role{ .Slave = args[i + 1] };
+                }
+            }
+        }
+        break :blk Role.Master;
+    };
+
     const address = try net.Address.resolveIp("127.0.0.1", port);
     log.info("Server started on 127.0.0.1:{d}", .{port});
 
@@ -36,7 +48,7 @@ pub fn main() !void {
     });
     defer listener.deinit();
 
-    var cache = Cache.init(allocator);
+    var cache = Cache.init(allocator, role);
     defer cache.deinit();
 
     while (true) {

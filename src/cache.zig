@@ -13,18 +13,28 @@ pub const Cache = struct {
     cache: HashMap(Item),
     mutex: Mutex,
     resp: Resp,
+    role: Role,
+
+    pub const Role = union(enum) {
+        Master,
+        Slave: []const u8,
+    };
 
     const Item = struct {
         value: []const u8,
         expiration: ?u64,
     };
 
-    pub fn init(allocator: Allocator) Cache {
+    pub fn init(
+        allocator: Allocator,
+        role: Role,
+    ) Cache {
         return Cache{
             .allocator = allocator,
             .cache = HashMap(Item).init(allocator),
             .mutex = Mutex{},
-            .resp = Resp.init(allocator),
+            .resp = Resp.init(allocator, role),
+            .role = role,
         };
     }
 
@@ -67,11 +77,8 @@ pub const Cache = struct {
         log.info("Key {s} set successfully", .{set.key});
         return self.resp.encode(&[_]Command{Command{ .Set = set }});
     }
-    fn handleInfoCommand(self: *Cache, param: []const u8) ![]const u8 {
-        if (std.mem.eql(u8, param, "replication")) {
-            return self.resp.encode(&[_]Command{Command{ .Info = param }});
-        }
-        return self.resp.encodeError("unsupported INFO parameter");
+    fn handleInfoCommand(self: *Cache) ![]const u8 {
+        return self.resp.encode(&[_]Command{Command.Info});
     }
     pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
         log.info("New connection established", .{});
@@ -100,7 +107,7 @@ pub const Cache = struct {
                         .Echo => break :blk try self.resp.encode(&[_]Command{command}),
                         .Get => |key| break :blk try self.handleGetCommand(key),
                         .Set => |set| break :blk try self.handleSetCommand(set),
-                        .Info => |param| break :blk try self.handleInfoCommand(param),
+                        .Info => break :blk try self.handleInfoCommand(),
                         .Unknown => break :blk try self.resp.encode(&[_]Command{command}),
                     }
                 };
