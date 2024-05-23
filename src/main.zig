@@ -33,11 +33,15 @@ pub fn main() !void {
         for (args[1..], 1..) |arg, i| {
             if (std.mem.eql(u8, arg, "--replicaof")) {
                 if (i + 2 < args.len) {
-                    var buf: [128]u8 = undefined;
-                    const addr = try std.fmt.bufPrint(&buf, "{s} {s}", .{ args[i + 1], args[i + 2] });
-                    break :blk Role{ .Slave = addr };
+                    const host = args[i + 1];
+                    const master_port = try std.fmt.parseUnsigned(u16, args[i + 2], 10);
+                    break :blk Role{ .Slave = .{
+                        .master_address = host,
+                        .master_port = master_port,
+                        .own_port = port,
+                    } };
                 } else {
-                    std.log.err("Invalid arguments. Usage: {s} --replicaof <host> <port>", .{args[0]});
+                    std.log.err("Invalid arguments.\nUsage: {s} --replicaof <host> <port>", .{args[0]});
                     return;
                 }
             }
@@ -82,17 +86,46 @@ fn startServer(connection: net.Server.Connection, cache: *Cache) !void {
     try cache.handleConnection(connection);
 }
 
-fn startClient(allocator: mem.Allocator, master_addr: []const u8) !void {
-    var iter = std.mem.splitSequence(u8, master_addr, " ");
-    const host = iter.next().?;
-    const port = try std.fmt.parseUnsigned(u16, iter.next().?, 10);
-
-    const stream = try net.tcpConnectToHost(allocator, host, port);
+fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo) !void {
+    const stream = try net.tcpConnectToHost(allocator, slave_info.master_address, slave_info.master_port);
     defer stream.close();
 
-    const responses = [_]RESP.Response{RESP.Response.Ping};
+    const responses = [_]RESP.Response{
+        RESP.Response.Ping,
+        RESP.Response{ .ReplConf = .{ .listening_port = slave_info.own_port } },
+        RESP.Response{ .ReplConf = .{ .capability = "psync2" } },
+    };
 
-    const ping_encoded = try RESP.encode(allocator, &responses);
-    defer allocator.free(ping_encoded);
-    try stream.writeAll(ping_encoded);
+    const ping = try RESP.encode(allocator, responses[0..1]);
+    defer allocator.free(ping);
+
+    try stream.writeAll(ping);
+
+    var buffer: [1024]u8 = undefined;
+    var bytes_read = try stream.read(&buffer);
+    var response = buffer[0..bytes_read];
+
+    if (!mem.eql(u8, response, "+PONG\r\n")) {
+        log.err("Unexpected response from server: {s}", .{response});
+        return;
+    }
+
+    const replconf1 = try RESP.encode(allocator, responses[1..2]);
+    defer allocator.free(replconf1);
+
+    const replconf2 = try RESP.encode(allocator, responses[2..3]);
+    defer allocator.free(replconf2);
+
+    try stream.writeAll(replconf1);
+    try stream.writeAll(replconf2);
+
+    buffer = undefined;
+    const ok_response = "+OK\r\n";
+    bytes_read = try stream.read(&buffer);
+    response = buffer[0..bytes_read];
+
+    if (!mem.eql(u8, response, ok_response)) {
+        log.err("Unexpected response from master: {s}", .{response});
+        return;
+    }
 }

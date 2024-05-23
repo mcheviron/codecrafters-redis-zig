@@ -23,6 +23,7 @@ pub const Response = union(enum) {
     Info: InfoResponse,
     Unknown,
     Ping,
+    ReplConf: ReplConfig,
 
     pub const InfoResponse = union(enum) {
         Master: struct {
@@ -30,6 +31,11 @@ pub const Response = union(enum) {
             master_repl_offset: u64,
         },
         Slave,
+    };
+
+    pub const ReplConfig = union(enum) {
+        listening_port: u16,
+        capability: []const u8,
     };
 };
 
@@ -124,6 +130,7 @@ pub fn encode(allocator: Allocator, responses: []const Response) ![]const u8 {
             .Info => |info| try encodeInfo(allocator, info),
             .Unknown => try encodeUnknownCommand(allocator),
             .Ping => try encodePing(allocator),
+            .ReplConf => |replconf| try encodeReplConf(allocator, replconf),
         };
         try writer.print("{s}", .{encoded_response});
     }
@@ -209,6 +216,29 @@ fn encodeUnknownCommand(allocator: Allocator) ![]const u8 {
 fn encodePing(allocator: Allocator) ![]const u8 {
     var strs = [_][]const u8{"PING"};
     return encodeBulkStrings(allocator, strs[0..]);
+}
+
+fn encodeReplConf(allocator: Allocator, replconf: Response.ReplConfig) ![]const u8 {
+    var result = ArrayList(u8).init(allocator);
+    errdefer result.deinit();
+
+    const writer = result.writer();
+    var buf: [20]u8 = undefined;
+
+    switch (replconf) {
+        .listening_port => |port| {
+            var strs = [_][]const u8{ "REPLCONF", "listening-port", try std.fmt.bufPrint(&buf, "{d}", .{port}) };
+            const encoded = try encodeBulkStrings(allocator, strs[0..]);
+            try writer.print("{s}", .{encoded});
+        },
+        .capability => |capa| {
+            var strs = [_][]const u8{ "REPLCONF", "capa", capa };
+            const encoded = try encodeBulkStrings(allocator, strs[0..]);
+            try writer.print("{s}", .{encoded});
+        },
+    }
+
+    return result.toOwnedSlice();
 }
 
 fn encodeSimpleString(allocator: Allocator, str: []const u8) ![]const u8 {

@@ -20,9 +20,15 @@ pub const Cache = struct {
         master_repl_offset: u64,
     };
 
+    pub const SlaveInfo = struct {
+        master_address: []const u8,
+        master_port: u16,
+        own_port: u16,
+    };
+
     pub const Role = union(enum) {
         Master: MasterInfo,
-        Slave: []const u8,
+        Slave: SlaveInfo,
     };
 
     const Item = struct {
