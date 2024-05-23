@@ -38,7 +38,7 @@ pub fn main() !void {
                     break :blk Role{ .Slave = addr };
                 } else {
                     std.log.err("Invalid arguments. Usage: {s} --replicaof <host> <port>", .{args[0]});
-                    std.c.exit(1);
+                    return;
                 }
             }
         }
