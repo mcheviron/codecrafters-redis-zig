@@ -27,4 +27,11 @@ pub fn build(b: *std.Build) void {
     // This will evaluate the `run` step rather than the default, which is "install".
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const test_step = b.step("test", "Run the tests");
+    test_step.dependOn(b.getInstallStep());
+    const test_cmd = b.addTest(.{
+        .root_source_file = b.path("src/test.zig"),
+    });
+    test_step.dependOn(&test_cmd.step);
 }

@@ -1,9 +1,11 @@
 const std = @import("std");
 const log = std.log;
 const net = std.net;
+const mem = std.mem;
 const Thread = std.Thread;
 const Cache = @import("cache.zig").Cache;
 const Role = @import("cache.zig").Cache.Role;
+const RESP = @import("resp.zig");
 
 const DEFAULT_PORT = 6379;
 
@@ -30,8 +32,13 @@ pub fn main() !void {
     const role = blk: {
         for (args[1..], 1..) |arg, i| {
             if (std.mem.eql(u8, arg, "--replicaof")) {
-                if (i + 1 < args.len) {
-                    break :blk Role{ .Slave = args[i + 1] };
+                if (i + 2 < args.len) {
+                    var buf: [128]u8 = undefined;
+                    const addr = try std.fmt.bufPrint(&buf, "{s} {s}", .{ args[i + 1], args[i + 2] });
+                    break :blk Role{ .Slave = addr };
+                } else {
+                    std.log.err("Invalid arguments. Usage: {s} --replicaof <host> <port>", .{args[0]});
+                    std.c.exit(1);
                 }
             }
         }
@@ -42,6 +49,15 @@ pub fn main() !void {
             },
         };
     };
+
+    if (role == .Slave) {
+        const slave_thread = try Thread.spawn(.{}, startClient, .{ allocator, role.Slave });
+        slave_thread.detach();
+        // var parts = std.mem.splitSequence(u8, role.Slave, " ");
+        // while (parts.next()) |part| {
+        //     log.info("{s}", .{part});
+        // }
+    }
 
     const address = try net.Address.resolveIp("127.0.0.1", port);
     log.info("Server started on 127.0.0.1:{d}", .{port});
@@ -57,11 +73,26 @@ pub fn main() !void {
     while (true) {
         const connection = try listener.accept();
 
-        const t = try Thread.spawn(.{}, handleConnection, .{ connection, &cache });
+        const t = try Thread.spawn(.{}, startServer, .{ connection, &cache });
         t.detach();
     }
 }
 
-fn handleConnection(connection: net.Server.Connection, cache: *Cache) !void {
+fn startServer(connection: net.Server.Connection, cache: *Cache) !void {
     try cache.handleConnection(connection);
+}
+
+fn startClient(allocator: mem.Allocator, master_addr: []const u8) !void {
+    var iter = std.mem.splitSequence(u8, master_addr, " ");
+    const host = iter.next().?;
+    const port = try std.fmt.parseUnsigned(u16, iter.next().?, 10);
+
+    const stream = try net.tcpConnectToHost(allocator, host, port);
+    defer stream.close();
+
+    const responses = [_]RESP.Response{RESP.Response.Ping};
+
+    const ping_encoded = try RESP.encode(allocator, &responses);
+    defer allocator.free(ping_encoded);
+    try stream.writeAll(ping_encoded);
 }

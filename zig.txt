@@ -1,243 +1,612 @@
-const std = @import("std");
-const log = std.log;
-const net = std.net;
-const Thread = std.Thread;
-const Cache = @import("cache.zig").Cache;
-const Role = @import("cache.zig").Cache.Role;
+.
+├── README.md
+├── build.zig
+├── build.zig.zon
+├── codecrafters.yml
+├── spawn_redis_server.sh
+├── src
+│   ├── cache.zig
+│   ├── main.zig
+│   ├── resp.zig
+│   └── test.zig
+├── zig-cache
+│   ├── h
+│   │   ├── 088bf25c8fc09ec266e1669a65f0b7c7.txt
+│   │   ├── 379ac3e6bc6c60a8af092bc87b4cd9ef.txt
+│   │   ├── 42dbc24dd47f56fb97fa65afe97c1dc6.txt
+│   │   ├── 539f34562ef7d9976a4c86c88d2c18f5.txt
+│   │   ├── 5b5115c39bbd6a44f02ed5840712e774.txt
+│   │   ├── 85d531a5af9181b360c11b74040b9452.txt
+│   │   ├── c0f21c13fb879a6e7b90a3c58d9a2de0.txt
+│   │   ├── e9b6a4670751da871173f7a18c8b68db.txt
+│   │   ├── f95c50bbe3ec58e6427d303c005c0616.txt
+│   │   └── timestamp
+│   ├── o
+│   │   ├── 03c6f21bc2d937c429d3f0323772dd95
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 0afbc567792ba4b37463bc06ff2c60e5
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 0b229b9954913fac860cd9e17143d4eb
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 0ba0f077f2f91d3ebe8742f185e84130
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 0cfe52c39d38a5ffe063432704142bba
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 107e9d6468912fd59fed46c6dc4cd703
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 137e25e57ba0f015d1c9f1a24399bf8d
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 13dad71a4b52e390a5b4b0cc9733d57e
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 161981ea7d7239bc22bf0b5b18c520fc
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 17df34697b385e5888ca2a2f07858542
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 189719224d6bd0721f1a882e06afa208
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 197d06956f96705b74d4f597b42e731c
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 19b6adfbe4732815f6b46b56fd417e83
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 1daf0e97d63c645918fa4c7ac27f9189
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 1e10fcc9a51aad1ad931bbc8afd7304a
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 1ed6c31c80c4b441ab664ead447725b6
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 20f8f8362ac39302905d03992fa818bc
+│   │   │   └── dependencies.zig
+│   │   ├── 21417c5cb6a5fc4ba25452a46d662606
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 22d828908e0f930c8e192b3788bb982c
+│   │   ├── 24c1b398bad4b99d426f94b336bc8a3b
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 2601677170e22c5a4a08bff38812793b
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 29d3819178d782d887795a1ff1356a5c
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 29ef4cae166b8ff515e191b9ae12919f
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 2b40e1d6c582e297eeafe2e3ecf398b4
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 2d24048bb8f399f67a67a33d6fb28a31
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 2e57194363ceef9c3165c8da222e2560
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 2fe5b7c6b3d1f719ebb968f6bcf0995f
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 2fe79e885b8c3e6252d59e5bf79f45da
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 37c5f880b29300e286ff5f2d6073cb23
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 384d59e473b91cf24d3bf6effb4e0294
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 394c3c34b47d6e9914e4c84da9e258fb
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 3bdb3b68b86dc10394f6c041c26157ae
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 3dfc942d9bbdfbe4f1a57df77c63436b
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 431b51fa2c404411ddd91f8c279972dc
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 4477c004fcc64fdd4575ff6b3d6166c9
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 47369a0465fbdc14bb09739148fe3f15
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 474be621eff8afafafdf89653f88628c
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 4a30a66acffb17ad7b8573f37a5d890d
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 4ac7a446b3cdbc0c91e13c091eef4b49
+│   │   ├── 4b7934c584628fc836887992d89a2c2a
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 4e98fa5282c51f0159d2e6cf33acea96
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 501057d8441dafba07bd06e787467da5
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 5275ac479d16d203502e87511ab71c90
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 534a1da18801a6a36584fbdc4751f00a
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 539019d0f23e9fe3ff6f80dca991788f
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 54b2c76c7fd1d5e68d1e6ed22adc4aed
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 55844b96d5785a6214a859268847d5bd
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 55a003fa693f09e91593ca7a4ae21638
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 5aa158a26cffe57e63ca55feaf1ec6c6
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 5b24018ce0391d65529e8e342110a3dd
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 5b3342aabb26593dc5826e9393e2528d
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 5d74fa40a2dd7dc5e8ee9ab1233a31a6
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 5efc27bc03e579b6dcbae4aec49238ba
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 616e4256f3ae1dfaa4da99f9b163299b
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 64ccce3bade115bfbfeb2ce345cb09f2
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 672c8abc7fceeb385ec7210cb054e9e0
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 681b9ec5ed41005769cee9d546ec1de9
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 688a11538dc856ecb63b2a9f96c78edb
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 69115d4f1247742924a4470096a6c650
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 6a375de63dc50702083e67006989e086
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 6cc6ea3d8bc68eddf09119c1497e914e
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 6daa2faaf0958a6daec384da25911c29
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 6e32152ab283f2899290d57fd06e3275
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 6f6d3436a48b08aa06921f6d4d57be66
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 725a0979f5da4979868874ee3b85fb04
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 78a01cb675b71b1b8ddf7ea8ff5fa444
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── 7af19754cbf0720e6af77de3c553d16b
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 7bd36191f581dae9c87d16256ffafcae
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 80fcdb6f0a28d4d9e7541d1fbc361491
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 8a7ab1944111ec3a597e28a001b53552
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 8b629429ae73ade0548f573782f8254a
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 8dc16f20101d6b79a1d7c07e1a4c1546
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 90b4a0fab1a9c7948b07d49fe3bfcc04
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 92e28f256de4022096f4e482955baf24
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 963dd430091f2b887881e278172fbbf2
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 99c64f1a94b7ad8a040b0a7d6598cdc3
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 9a5af9247d2bb4911136bc79299b405a
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 9bbe610219d8ef8b881db70d00be981c
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── 9da538f5f0cc60379e82cd3c1012d147
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── a056a1935d046e7f3d27fc7ca52f0d8b
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── a065354f3f3afcc6b21cee48c688c427
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── a3a78020ac2e32ae3459da99cb94e912
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── a5b6f97397695fec97f512f1b76ecc71
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── a70d43b8642cf96006971c5605f1a074
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── a7d7319a6c92c21192ce3260700eae24
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── aa2c22c24e17870b5cddad33591402e2
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── aa6cc84bb09c5a9825660d2e6823a5d7
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── ac00b103899de7f5833284e2ecbb0998
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── aed44c4916dd89d6957b6300b2d9f709
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── b116836a902136fbd19a941b78322e48
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── b4dd026b8193a9eb38ea569de6b8f52f
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── b50e4c9a8232106fd974b88d601381b7
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── b5f35356abe85636cee1f80d65cada02
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── be330f920b4462a42f364d240a0b0da6
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── c2e13aeef6dbc3ae8b81e212883eee6f
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── c3792f08e6293e57acdc5ddcbdb0e754
+│   │   ├── c565abb7b2ab608d824b7d1f32323ec4
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── ca66f44dc667ab3a9f0e875cc40a951e
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── ca7959193db2e2786673f4df92160ab0
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── cbb854218b228cc7616906aceacea8bb
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── cca6470640b67f49d0728c37458aab54
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── cfec056b7283339d11e73d774111d150
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── d86e7a768648272a3b9d82a287f6fc8f
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── d88fe1886980593a340e5ae2a4a19e9e
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── d8dda9faf40b3c1608efca549211d08c
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── dd13ca3cff47d6318618b16e50b9fc5d
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── e08f60683eb75f19c952c1661a3a4185
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── e0f36358288eff6b96bb3da236cba11a
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── e22f98ec6f8d815c6d96fed0bc6cde63
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── e39fea25d309b5c270e839091c8f0cdb
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── e9e36ebd60531eeee4692c123217305e
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── ea9ec3d347d3458c21c73e5aac82d8c0
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── ecb18eef3aab4fa78f66ef654e34d459
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── ed9b51ac8ab9fdf8197dc846a0e1ba4b
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── f4ab5808aed040a4a4b5ee332ffedd84
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── f5310f2b7210d6a3737eb1ff2ae729b8
+│   │   ├── fb4650149622fa1dbbe034f7a65eb43d
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── fcd88a5f0065f140d3fcf8bad007fa8a
+│   │   │   ├── build
+│   │   │   └── build.o
+│   │   ├── fd755361dd8391a6af0c69a0d5c077ec
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   ├── fdbd7dd987198197b234ea6513408a61
+│   │   │   ├── zig
+│   │   │   └── zig.o
+│   │   └── fddea71dfdd944ec29ca7940207d034b
+│   │       ├── zig
+│   │       └── zig.o
+│   ├── tmp
+│   │   ├── 032061491c2e74ca
+│   │   │   └── zig
+│   │   ├── 05de3c4f5330cc8f
+│   │   │   └── zig
+│   │   ├── 0a0136b09bd1fbf5
+│   │   │   └── zig
+│   │   ├── 0a5a56a24b349437
+│   │   │   └── zig
+│   │   ├── 0be96307bea4eb2b
+│   │   │   └── zig
+│   │   ├── 0e195fbb52479804
+│   │   │   └── build
+│   │   ├── 0f2e38a3f467c0f6
+│   │   │   └── build
+│   │   ├── 12681b52754d9d28
+│   │   │   └── zig
+│   │   ├── 12cb091011576cf4
+│   │   │   └── zig
+│   │   ├── 136a34b5d75fd5bf
+│   │   │   └── build
+│   │   ├── 13eac540a5187111
+│   │   │   └── zig
+│   │   ├── 167c93da3919d330
+│   │   │   └── zig
+│   │   ├── 16db31a5d3a4e0eb
+│   │   │   └── zig
+│   │   ├── 17ddf2a157d97381
+│   │   │   └── zig
+│   │   ├── 1a14f0874dea89f3
+│   │   │   └── zig
+│   │   ├── 1ba713e1fc712e45
+│   │   │   └── zig
+│   │   ├── 1db195c36377a642
+│   │   │   └── zig
+│   │   ├── 1f0dd167344f2c34
+│   │   │   └── zig
+│   │   ├── 20a84d006a5405e7
+│   │   │   └── zig
+│   │   ├── 2646e29b8f84868a
+│   │   │   └── zig
+│   │   ├── 275bd2baa2f58a75
+│   │   │   └── zig
+│   │   ├── 28efaf30009841d2
+│   │   │   └── zig
+│   │   ├── 29cde7517029a48f
+│   │   │   └── zig
+│   │   ├── 2d7a07b4f2130701
+│   │   │   └── zig
+│   │   ├── 2f0e98e3486e1cd2
+│   │   │   └── zig
+│   │   ├── 2f5cd3c95817463c
+│   │   │   └── zig
+│   │   ├── 2fa8a3986b6a8bb3
+│   │   │   └── zig
+│   │   ├── 30913a768e1e8477
+│   │   │   └── zig
+│   │   ├── 30a25783f4c7637e
+│   │   │   └── build
+│   │   ├── 33b9748225c5c49d
+│   │   │   └── zig
+│   │   ├── 35a056e1a2d91970
+│   │   │   └── zig
+│   │   ├── 3721c2582d299c90
+│   │   │   └── zig
+│   │   ├── 396eb90b57e2ce77
+│   │   │   └── zig
+│   │   ├── 3b7b4667a385de8e
+│   │   │   └── zig
+│   │   ├── 3b8fd889ca6204a8
+│   │   │   └── zig
+│   │   ├── 3be59af5f9321e27
+│   │   │   └── zig
+│   │   ├── 3f3c0365ffc111da
+│   │   │   └── zig
+│   │   ├── 4f8d23059b7a63e9
+│   │   │   └── zig
+│   │   ├── 51935ed37eb4fc7f
+│   │   │   └── zig
+│   │   ├── 590889b0e0976996
+│   │   │   └── zig
+│   │   ├── 5939693d242c0ae0
+│   │   │   └── zig
+│   │   ├── 60553bb4bf2fe055
+│   │   │   └── zig
+│   │   ├── 627ea6321452ce25
+│   │   │   └── build
+│   │   ├── 643d9e24fb31b445
+│   │   │   └── zig
+│   │   ├── 65be3a17a37136f9
+│   │   │   └── build
+│   │   ├── 69234ebead16b9fe
+│   │   │   └── zig
+│   │   ├── 6aec2612c85b6593
+│   │   │   └── zig
+│   │   ├── 72e3ecf982c32865
+│   │   │   └── zig
+│   │   ├── 74094908e95a00f8
+│   │   │   └── build
+│   │   ├── 7656fecc14a4a352
+│   │   │   └── zig
+│   │   ├── 766ad4a91e0f67f8
+│   │   │   └── zig
+│   │   ├── 77e2df8d82b07e61
+│   │   │   └── zig
+│   │   ├── 7992fc6c5dbf54c5
+│   │   │   └── zig
+│   │   ├── 7994a94fc28efaad
+│   │   │   └── zig
+│   │   ├── 7a22f1e9356b8322
+│   │   │   └── zig
+│   │   ├── 7c44e7a1ed693536
+│   │   │   └── zig
+│   │   ├── 7e3c71c32b6202be
+│   │   ├── 8079d7af026fb58f
+│   │   │   └── zig
+│   │   ├── 84db7d04e9aa51c3
+│   │   │   └── zig
+│   │   ├── 87499655fef3b0b5
+│   │   │   └── build
+│   │   ├── 8dc19320f7732970
+│   │   │   └── zig
+│   │   ├── 924abc4c82d4d7b8
+│   │   │   └── zig
+│   │   ├── 9273f4f24a00379c
+│   │   │   └── zig
+│   │   ├── 934dc64fb1cdbc76
+│   │   │   └── zig
+│   │   ├── 9603016a163a29c2
+│   │   │   └── zig
+│   │   ├── 986283b65f7bc1d6
+│   │   │   └── zig
+│   │   ├── 9af4886bd21c6fc8
+│   │   │   └── zig
+│   │   ├── 9b9e20f25375674f
+│   │   │   └── zig
+│   │   ├── 9c3d7c24929b27e3
+│   │   │   └── zig
+│   │   ├── a1905a626a265215
+│   │   │   └── zig
+│   │   ├── a1b07bb8fb3c0d92
+│   │   │   └── zig
+│   │   ├── a3141c1620a562c0
+│   │   │   └── zig
+│   │   ├── a5c1ae44d42e6d69
+│   │   │   └── zig
+│   │   ├── a6b43f29703b8cb8
+│   │   │   └── zig
+│   │   ├── a8578bd6f4bf67f6
+│   │   │   └── zig
+│   │   ├── abd97b6737684c19
+│   │   │   └── zig
+│   │   ├── acf9cd517bc30983
+│   │   │   └── zig
+│   │   ├── ae3767118f28164f
+│   │   │   └── build
+│   │   ├── b1a2c9df046241f7
+│   │   │   └── zig
+│   │   ├── b582658acc74b102
+│   │   │   └── zig
+│   │   ├── b5ef9f320acbbb06
+│   │   │   └── zig
+│   │   ├── baa5461073ef1f1f
+│   │   │   └── zig
+│   │   ├── bf5310c00d0a20af
+│   │   │   └── zig
+│   │   ├── c5b7ca61f8661140
+│   │   │   └── zig
+│   │   ├── c67ff61b62394454
+│   │   │   └── zig
+│   │   ├── cad81f3c131c241a
+│   │   │   └── zig
+│   │   ├── cafd555f2147af5b
+│   │   │   └── zig
+│   │   ├── cb52505efec23fca
+│   │   │   └── zig
+│   │   ├── d506b01fd03f5e3b
+│   │   │   └── zig
+│   │   ├── d89a36a3d73ba1e0
+│   │   │   └── zig
+│   │   ├── e0c779d0bbbe206b
+│   │   │   └── build
+│   │   ├── e4d90adfbb78e57f
+│   │   │   └── zig
+│   │   ├── e521f18f4eae3d93
+│   │   │   └── build
+│   │   ├── e66f56b35603826d
+│   │   │   └── zig
+│   │   ├── e8ab389d984cc29e
+│   │   │   └── zig
+│   │   ├── ead55cc7c09c0468
+│   │   │   └── zig
+│   │   ├── eb08ea6c0cc3709d
+│   │   │   └── zig
+│   │   ├── eb209ecabf29304e
+│   │   │   └── zig
+│   │   ├── f24d1c9abe8e34bd
+│   │   ├── f6d30d553810fd8b
+│   │   │   └── zig
+│   │   ├── f7f5cbd71e95df46
+│   │   │   └── zig
+│   │   ├── fb399fed82c6f058
+│   │   │   └── build
+│   │   └── fe5ea885c3018191
+│   │       └── zig
+│   └── z
+│       ├── 0fa0cd357c3a7584fb31af250e3450b3
+│       ├── 0fe4ee79a5f079bb208b60e7e999830b
+│       ├── 3e8a24138b02e37e7a3106cdcc8c696c
+│       ├── 4b0fbe798efe844e78046b46be6f7370
+│       ├── 8a7f1237b33cd845498403d3ca9acc6c
+│       └── ee37912b44a35424a8af734e72c7c997
+├── zig-out
+│   └── bin
+│       └── zig
+└── zig.txt
 
-const DEFAULT_PORT = 6379;
+233 directories, 361 files
+./codecrafters.yml
+# Set this to true if you want debug logs.
+#
+# These can be VERY verbose, so we suggest turning them off
+# unless you really need them.
+debug: true
 
-pub fn main() !void {
-    log.info("Logs from your program will appear here!\n", .{});
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (gpa.deinit() != .ok) @panic("leak occured");
-
-    const allocator = gpa.allocator();
-
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
-    const port = blk: {
-        for (args[1..], 1..) |arg, i| {
-            if (std.mem.eql(u8, arg, "--port")) {
-                if (i + 1 < args.len) {
-                    break :blk try std.fmt.parseUnsigned(u16, args[i + 1], 10);
-                }
-            }
-        }
-        break :blk DEFAULT_PORT;
-    };
-
-    const role = blk: {
-        for (args[1..], 1..) |arg, i| {
-            if (std.mem.eql(u8, arg, "--replicaof")) {
-                if (i + 1 < args.len) {
-                    break :blk Role{ .Slave = args[i + 1] };
-                }
-            }
-        }
-        break :blk Role{
-            .Master = .{
-                .master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
-                .master_replid_offset = 0,
-            },
-        };
-    };
-
-    const address = try net.Address.resolveIp("127.0.0.1", port);
-    log.info("Server started on 127.0.0.1:{d}", .{port});
-
-    var listener = try address.listen(.{
-        .reuse_address = true,
-    });
-    defer listener.deinit();
-
-    var cache = Cache.init(allocator, role);
-    defer cache.deinit();
-
-    while (true) {
-        const connection = try listener.accept();
-
-        const t = try Thread.spawn(.{}, handleConnection, .{ connection, &cache });
-        t.detach();
-    }
-}
-
-fn handleConnection(connection: net.Server.Connection, cache: *Cache) !void {
-    try cache.handleConnection(connection);
-}
-const std = @import("std");
-
-// Learn more about this file here: https://ziglang.org/learn/build-system
-pub fn build(b: *std.Build) void {
-    const exe = b.addExecutable(.{
-        .name = "zig",
-        .root_source_file = b.path("src/main.zig"),
-        .target = b.standardTargetOptions(.{}),
-        .optimize = b.standardOptimizeOption(.{}),
-    });
-
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(exe);
-
-    // This *creates* a Run step in the build graph, to be executed when another
-    // step is evaluated that depends on it. The next line below will establish
-    // such a dependency.
-    const run_cmd = b.addRunArtifact(exe);
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    // This creates a build step. It will be visible in the `zig build --help` menu,
-    // and can be selected like this: `zig build run`
-    // This will evaluate the `run` step rather than the default, which is "install".
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
-}
-const std = @import("std");
-const mem = std.mem;
-const log = std.log;
-const time = std.time;
-const Allocator = std.mem.Allocator;
-const HashMap = std.StringHashMap;
-const Mutex = std.Thread.Mutex;
-const Resp = @import("resp.zig").Resp;
-const Command = @import("resp.zig").Resp.Command;
-const Response = @import("resp.zig").Resp.Response;
-
-pub const Cache = struct {
-    allocator: Allocator,
-    cache: HashMap(Item),
-    mutex: Mutex,
-    resp: Resp,
-    role: Role,
-
-    pub const MasterInfo = struct {
-        master_replid: []const u8,
-        master_replid_offset: u64,
-    };
-
-    pub const Role = union(enum) {
-        Master: MasterInfo,
-        Slave: []const u8,
-    };
-
-    const Item = struct {
-        value: []const u8,
-        expiration: ?u64,
-    };
-
-    pub fn init(
-        allocator: Allocator,
-        role: Role,
-    ) Cache {
-        return Cache{
-            .allocator = allocator,
-            .cache = HashMap(Item).init(allocator),
-            .mutex = Mutex{},
-            .resp = Resp.init(allocator),
-            .role = role,
-        };
-    }
-
-    pub fn deinit(self: *Cache) void {
-        self.cache.deinit();
-        self.resp.deinit();
-    }
-
-    fn handleGetCommand(self: *Cache, key: []const u8) ![]const u8 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        if (self.cache.get(key)) |item| {
-            log.info("Value: {s}, {?}", .{ item.value, item.expiration });
-            if (item.expiration) |exp| {
-                const now: u64 = @intCast(time.milliTimestamp());
-                log.info("Now: {}", .{now});
-                if (now > exp) {
-                    log.info("Key {s} has expired, removing from cache", .{key});
-                    _ = self.cache.remove(key);
-                    return self.resp.encode(&[_]Response{Response{ .Get = null }});
-                }
-            }
-            log.info("Found value for key {s}: {s}", .{ key, item.value });
-            return self.resp.encode(&[_]Response{Response{ .Get = item.value }});
-        }
-        log.info("Key {s} not found in cache", .{key});
-        return self.resp.encode(&[_]Response{Response{ .Get = null }});
-    }
-
-    fn handleSetCommand(self: *Cache, set: Resp.SetCommand) ![]const u8 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        const now: u64 = @intCast(time.milliTimestamp());
-        try self.cache.put(set.key, Item{
-            .value = set.value,
-            .expiration = if (set.expiration) |exp| now + exp else null,
-        });
-        log.info("Key {s} set successfully", .{set.key});
-        return self.resp.encode(&[_]Response{Response.Set});
-    }
-
-    fn handleInfoCommand(self: *Cache) ![]const u8 {
-        const info_response = switch (self.role) {
-            .Master => |master_info| Response{
-                .Info = Response.InfoResponse{
-                    .Master = .{
-                        .master_replid = master_info.master_replid,
-                        .master_replid_offset = master_info.master_replid_offset,
-                    },
-                },
-            },
-            .Slave => Response{
-                .Info = Response.InfoResponse.Slave,
-            },
-        };
-        return self.resp.encode(&[_]Response{info_response});
-    }
-
-    pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
-        log.info("New connection established", .{});
-
-        var buffer: [1024]u8 = undefined;
-        var reader = connection.stream.reader();
-        var writer = connection.stream.writer();
-
-        while (true) {
-            log.info("Waiting to read data from connection", .{});
-            const bytes_read = try reader.read(&buffer);
-            log.info("Bytes read: {}", .{bytes_read});
-            if (bytes_read == 0) break;
-
-            const data = buffer[0..bytes_read];
-            log.info("Data received: {s}", .{data});
-
-            const commandList = try self.resp.decode(data);
-            defer self.allocator.free(commandList);
-
-            for (commandList) |command| {
-                log.info("Command: {}", .{command});
-                const response = blk: {
-                    switch (command) {
-                        .Ping => break :blk try self.resp.encode(&[_]Response{Response.Pong}),
-                        .Echo => |message| break :blk try self.resp.encode(&[_]Response{Response{ .Echo = message }}),
-                        .Get => |key| break :blk try self.handleGetCommand(key),
-                        .Set => |set| break :blk try self.handleSetCommand(set),
-                        .Info => break :blk try self.handleInfoCommand(),
-                        .Unknown => break :blk try self.resp.encode(&[_]Response{Response.Unknown}),
-                    }
-                };
-                defer self.allocator.free(response);
-                log.info("Response: {s}", .{response});
-                try writer.writeAll(response);
-            }
-        }
-    }
-};
+# Use this to change the Zig version used to run your code
+# on Codecrafters.
+#
+# Available versions: zig-0.12
+language_pack: zig-0.12
+./src/resp.zig
 const std = @import("std");
 const mem = std.mem;
 const log = std.log;
@@ -269,7 +638,7 @@ pub const Resp = struct {
         pub const InfoResponse = union(enum) {
             Master: struct {
                 master_replid: []const u8,
-                master_replid_offset: u64,
+                master_repl_offset: u64,
             },
             Slave,
         };
@@ -334,7 +703,7 @@ pub const Resp = struct {
                         // Parse the argument value
                         // Example: "ECHO" => arg = "ECHO"
                         const arg = it.next() orelse return ParseError.InvalidCommand;
-                        log.info("arg.len: {d}, len: {d}\n", .{ arg.len, len });
+                        // log.info("arg.len: {d}, len: {d}\n", .{ arg.len, len });
                         if (arg.len != len) return ParseError.ArgLenMismatch;
                         try args.append(arg);
                     }
@@ -363,6 +732,7 @@ pub const Resp = struct {
         var result = ArrayList(u8).init(self.allocator);
         errdefer result.deinit();
 
+        const writer = result.writer();
         for (responses) |response| {
             const encoded_response = switch (response) {
                 .Pong => try self.encodePong(),
@@ -372,7 +742,7 @@ pub const Resp = struct {
                 .Info => |info| try self.encodeInfo(info),
                 .Unknown => try self.encodeUnknownCommand(),
             };
-            try result.appendSlice(encoded_response);
+            try writer.print("{s}", .{encoded_response});
         }
 
         return result.toOwnedSlice();
@@ -427,28 +797,26 @@ pub const Resp = struct {
     }
 
     fn encodeInfo(self: *Resp, info: Response.InfoResponse) ![]const u8 {
+        var result = ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+
+        const writer = result.writer();
+
         switch (info) {
             .Master => |master_info| {
-                var result = ArrayList(u8).init(self.allocator);
-                errdefer result.deinit();
-
-                const role_master = try self.encodeBulkString("role:master");
-                try result.appendSlice(role_master);
-
                 var buf: [1024]u8 = undefined;
-                const master_replid = try std.fmt.bufPrint(&buf, "master_replid:{s}", .{master_info.master_replid});
-                const encoded_master_replid = try self.encodeBulkString(master_replid);
-                try result.appendSlice(encoded_master_replid);
+                const full_info = try std.fmt.bufPrint(&buf, "role:master\nmaster_replid:{s}\nmaster_repl_offset:{d}\n", .{ master_info.master_replid, master_info.master_repl_offset });
 
-                buf = undefined;
-                const master_replid_offset = try std.fmt.bufPrint(&buf, "master_replid_offset:{d}", .{master_info.master_replid_offset});
-                const encoded_master_replid_offset = try self.encodeBulkString(master_replid_offset);
-                try result.appendSlice(encoded_master_replid_offset);
-
-                return result.toOwnedSlice();
+                const encoded = try self.encodeBulkString(full_info);
+                try writer.print("{s}", .{encoded});
             },
-            .Slave => return self.encodeBulkString("role:slave"),
+            .Slave => {
+                const role_slave = try self.encodeBulkString("role:slave");
+                try writer.print("{s}", .{role_slave});
+            },
         }
+
+        return result.toOwnedSlice();
     }
 
     fn encodeUnknownCommand(self: *Resp) ![]const u8 {
@@ -458,7 +826,7 @@ pub const Resp = struct {
     fn encodeSimpleString(self: *Resp, str: []const u8) ![]const u8 {
         var result = ArrayList(u8).init(self.allocator);
         errdefer result.deinit();
-        try result.appendSlice(str);
+        try result.writer().print("{s}", .{str});
         return result.toOwnedSlice();
     }
 
@@ -480,3 +848,567 @@ pub const Resp = struct {
         return result.toOwnedSlice();
     }
 };
+./README.md
+[![progress-banner](https://backend.codecrafters.io/progress/redis/d3a91812-4ac4-46fa-9ef8-6f25c191bd5b)](https://app.codecrafters.io/users/mcheviron?r=2qF)
+
+This is a starting point for Zig solutions to the
+["Build Your Own Redis" Challenge](https://codecrafters.io/challenges/redis).
+
+In this challenge, you'll build a toy Redis clone that's capable of handling
+basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
+event loops, the Redis protocol and more.
+
+**Note**: If you're viewing this repo on GitHub, head over to
+[codecrafters.io](https://codecrafters.io) to try the challenge.
+
+# Passing the first stage
+
+The entry point for your Redis implementation is in `src/main.zig`. Study and
+uncomment the relevant code, and push your changes to pass the first stage:
+
+```sh
+git add .
+git commit -m "pass 1st stage" # any msg
+git push origin master
+```
+
+That's all!
+
+# Stage 2 & beyond
+
+Note: This section is for stages 2 and beyond.
+
+1. Ensure you have `zig (0.12)` installed locally
+1. Run `./spawn_redis_server.sh` to run your Redis server, which is implemented
+   in `src/main.zig`.
+1. Commit your changes and run `git push origin master` to submit your solution
+   to CodeCrafters. Test output will be streamed to your terminal.
+./spawn_redis_server.sh
+#!/bin/sh
+#
+# DON'T EDIT THIS!
+#
+# CodeCrafters uses this file to test your code. Don't make any changes here!
+#
+# DON'T EDIT THIS!
+set -e
+
+exec zig build run -- $@
+./src/cache.zig
+const std = @import("std");
+const mem = std.mem;
+const log = std.log;
+const time = std.time;
+const Allocator = std.mem.Allocator;
+const HashMap = std.StringHashMap;
+const Mutex = std.Thread.Mutex;
+const Resp = @import("resp.zig").Resp;
+const Command = @import("resp.zig").Resp.Command;
+const Response = @import("resp.zig").Resp.Response;
+
+pub const Cache = struct {
+    allocator: Allocator,
+    cache: HashMap(Item),
+    mutex: Mutex,
+    resp: Resp,
+    role: Role,
+
+    pub const MasterInfo = struct {
+        master_replid: []const u8,
+        master_repl_offset: u64,
+    };
+
+    pub const Role = union(enum) {
+        Master: MasterInfo,
+        Slave: []const u8,
+    };
+
+    const Item = struct {
+        value: []const u8,
+        expiration: ?u64,
+    };
+
+    pub fn init(
+        allocator: Allocator,
+        role: Role,
+    ) Cache {
+        return Cache{
+            .allocator = allocator,
+            .cache = HashMap(Item).init(allocator),
+            .mutex = Mutex{},
+            .resp = Resp.init(allocator),
+            .role = role,
+        };
+    }
+
+    pub fn deinit(self: *Cache) void {
+        self.cache.deinit();
+        self.resp.deinit();
+    }
+
+    pub fn handleGetCommand(self: *Cache, key: []const u8) ![]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.cache.get(key)) |item| {
+            log.info("Value: {s}, {?}", .{ item.value, item.expiration });
+            if (item.expiration) |exp| {
+                const now: u64 = @intCast(time.milliTimestamp());
+                log.info("Now: {}", .{now});
+                if (now > exp) {
+                    log.info("Key {s} has expired, removing from cache", .{key});
+                    _ = self.cache.remove(key);
+                    return self.resp.encode(&[_]Response{Response{ .Get = null }});
+                }
+            }
+            log.info("Found value for key {s}: {s}", .{ key, item.value });
+            return self.resp.encode(&[_]Response{Response{ .Get = item.value }});
+        }
+        log.info("Key {s} not found in cache", .{key});
+        return self.resp.encode(&[_]Response{Response{ .Get = null }});
+    }
+
+    pub fn handleSetCommand(self: *Cache, set: Resp.SetCommand) ![]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const now: u64 = @intCast(time.milliTimestamp());
+        try self.cache.put(set.key, Item{
+            .value = set.value,
+            .expiration = if (set.expiration) |exp| now + exp else null,
+        });
+        log.info("Key {s} set successfully", .{set.key});
+        return self.resp.encode(&[_]Response{Response.Set});
+    }
+
+    pub fn handleInfoCommand(self: *Cache) ![]const u8 {
+        const info_response = switch (self.role) {
+            .Master => |master_info| Response{
+                .Info = Response.InfoResponse{
+                    .Master = .{
+                        .master_replid = master_info.master_replid,
+                        .master_repl_offset = master_info.master_repl_offset,
+                    },
+                },
+            },
+            .Slave => Response{
+                .Info = Response.InfoResponse.Slave,
+            },
+        };
+        return self.resp.encode(&[_]Response{info_response});
+    }
+
+    pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
+        // log.info("New connection established", .{});
+
+        var buffer: [1024]u8 = undefined;
+        var reader = connection.stream.reader();
+        var writer = connection.stream.writer();
+
+        while (true) {
+            // log.info("Waiting to read data from connection", .{});
+            const bytes_read = try reader.read(&buffer);
+            // log.info("Bytes read: {}", .{bytes_read});
+            if (bytes_read == 0) break;
+
+            const data = buffer[0..bytes_read];
+            // log.info("Data received: {s}", .{data});
+
+            const commandList = try self.resp.decode(data);
+            defer self.allocator.free(commandList);
+
+            for (commandList) |command| {
+                // log.info("Command: {}", .{command});
+                const response = blk: {
+                    switch (command) {
+                        .Ping => break :blk try self.resp.encode(&[_]Response{Response.Pong}),
+                        .Echo => |message| break :blk try self.resp.encode(&[_]Response{Response{ .Echo = message }}),
+                        .Get => |key| break :blk try self.handleGetCommand(key),
+                        .Set => |set| break :blk try self.handleSetCommand(set),
+                        .Info => break :blk try self.handleInfoCommand(),
+                        .Unknown => break :blk try self.resp.encode(&[_]Response{Response.Unknown}),
+                    }
+                };
+                defer self.allocator.free(response);
+                // const response_type_info = @typeInfo(@TypeOf(response));
+                // log.info("Response type: {}", .{response_type_info});
+                try writer.writeAll(response);
+            }
+        }
+    }
+};
+./build.zig
+const std = @import("std");
+
+// Learn more about this file here: https://ziglang.org/learn/build-system
+pub fn build(b: *std.Build) void {
+    const exe = b.addExecutable(.{
+        .name = "zig",
+        .root_source_file = b.path("src/main.zig"),
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+    });
+
+    // This declares intent for the executable to be installed into the
+    // standard location when the user invokes the "install" step (the default
+    // step when running `zig build`).
+    b.installArtifact(exe);
+
+    // This *creates* a Run step in the build graph, to be executed when another
+    // step is evaluated that depends on it. The next line below will establish
+    // such a dependency.
+    const run_cmd = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    // This creates a build step. It will be visible in the `zig build --help` menu,
+    // and can be selected like this: `zig build run`
+    // This will evaluate the `run` step rather than the default, which is "install".
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
+
+    const test_step = b.step("test", "Run the tests");
+    test_step.dependOn(b.getInstallStep());
+    const test_cmd = b.addTest(.{
+        .root_source_file = b.path("src/test.zig"),
+    });
+    test_step.dependOn(&test_cmd.step);
+}
+./src/main.zig
+const std = @import("std");
+const log = std.log;
+const net = std.net;
+const Thread = std.Thread;
+const Cache = @import("cache.zig").Cache;
+const Role = @import("cache.zig").Cache.Role;
+
+const DEFAULT_PORT = 6379;
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+
+    const allocator = gpa.allocator();
+
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    const port = blk: {
+        for (args[1..], 1..) |arg, i| {
+            if (std.mem.eql(u8, arg, "--port")) {
+                if (i + 1 < args.len) {
+                    break :blk try std.fmt.parseUnsigned(u16, args[i + 1], 10);
+                }
+            }
+        }
+        break :blk DEFAULT_PORT;
+    };
+
+    const role = blk: {
+        for (args[1..], 1..) |arg, i| {
+            if (std.mem.eql(u8, arg, "--replicaof")) {
+                if (i + 1 < args.len) {
+                    break :blk Role{ .Slave = args[i + 1] };
+                }
+            }
+        }
+        break :blk Role{
+            .Master = .{
+                .master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+                .master_repl_offset = 0,
+            },
+        };
+    };
+
+    const address = try net.Address.resolveIp("127.0.0.1", port);
+    log.info("Server started on 127.0.0.1:{d}", .{port});
+
+    var listener = try address.listen(.{
+        .reuse_address = true,
+    });
+    defer listener.deinit();
+
+    var cache = Cache.init(allocator, role);
+    defer cache.deinit();
+
+    while (true) {
+        const connection = try listener.accept();
+
+        const t = try Thread.spawn(.{}, handleConnection, .{ connection, &cache });
+        t.detach();
+    }
+}
+
+fn handleConnection(connection: net.Server.Connection, cache: *Cache) !void {
+    try cache.handleConnection(connection);
+}
+./src/test.zig
+const std = @import("std");
+const Resp = @import("resp.zig").Resp;
+const testing = std.testing;
+const Command = @import("resp.zig").Resp.Command;
+const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
+const Response = @import("resp.zig").Resp.Response;
+const Cache = @import("cache.zig").Cache;
+const Role = @import("cache.zig").Cache.Role;
+
+fn testEncodeDecode(expected_commands: []const Command, encoded_string: []const u8) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+    const allocator = gpa.allocator();
+
+    var resp = Resp.init(allocator);
+    defer resp.deinit();
+
+    const commands = try resp.decode(encoded_string);
+    defer allocator.free(commands);
+
+    try testing.expectEqualSlices(Command, expected_commands, commands);
+}
+
+fn testCommand(command: Command, expected_response: []const u8) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+    const allocator = gpa.allocator();
+
+    var cache = Cache.init(allocator, Role{ .Slave = "" });
+    defer cache.deinit();
+
+    var resp = Resp.init(allocator);
+    defer resp.deinit();
+
+    var result = ArrayList(u8).init(allocator);
+    defer result.deinit();
+
+    const response = try switch (command) {
+        .Ping => resp.encode(&[_]Response{Response.Pong}),
+        .Echo => |message| resp.encode(&[_]Response{Response{ .Echo = message }}),
+        .Get => |key| cache.handleGetCommand(key),
+        .Set => |set| cache.handleSetCommand(set),
+        .Info => cache.handleInfoCommand(),
+        .Unknown => resp.encode(&[_]Response{Response.Unknown}),
+    };
+    defer allocator.free(response);
+
+    try result.writer().print("{s}", .{response});
+    try testing.expectEqualSlices(u8, expected_response, result.items);
+}
+
+test "RESP - Decode multiple commands" {
+    const encoded_string = "*2\r\n$4\r\nECHO\r\n$13\r\nHello, World!\r\n*2\r\n$3\r\nGET\r\n$7\r\nmykey\r\n";
+    const expected_commands = [_]Command{
+        Command{ .Echo = "Hello, World!" },
+        Command{ .Get = "mykey" },
+    };
+
+    try testEncodeDecode(&expected_commands, encoded_string);
+}
+
+test "RESP - Decode single command" {
+    const encoded_string = "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$5\r\nvalue\r\n";
+    const expected_commands = [_]Command{
+        Command{ .Set = .{
+            .key = "mykey",
+            .value = "value",
+            .expiration = null,
+        } },
+    };
+
+    try testEncodeDecode(&expected_commands, encoded_string);
+}
+
+test "Command - Ping" {
+    const command = Command.Ping;
+    const expected_response = "+PONG\r\n";
+
+    try testCommand(command, expected_response);
+}
+
+test "Command - Echo" {
+    const message = "Hello from Zig!";
+    const command = Command{ .Echo = message };
+    const expected_response = try std.fmt.allocPrint(std.testing.allocator, "$16\r\n{s}\r\n", .{message});
+    defer std.testing.allocator.free(expected_response);
+
+    try testCommand(command, expected_response);
+}
+
+test "Command - Get - Not found" {
+    const key = "nonexistent_key";
+    const command = Command{ .Get = key };
+    const expected_response = "$-1\r\n";
+
+    try testCommand(command, expected_response);
+}
+
+test "Command - Set" {
+    const command = Command{ .Set = .{
+        .key = "mykey",
+        .value = "myvalue",
+        .expiration = null,
+    } };
+    const expected_response = "+OK\r\n";
+
+    try testCommand(command, expected_response);
+}
+
+test "Command - Get - Found" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+    const allocator = gpa.allocator();
+
+    var cache = Cache.init(allocator, Role{ .Slave = "" });
+    defer cache.deinit();
+
+    var resp = Resp.init(allocator);
+    defer resp.deinit();
+
+    var result = ArrayList(u8).init(allocator);
+    defer result.deinit();
+
+    const key = "mykey";
+    const value = "myvalue";
+
+    _ = try cache.handleSetCommand(Resp.SetCommand{
+        .key = key,
+        .value = value,
+        .expiration = null,
+    });
+
+    const response = try cache.handleGetCommand(key);
+    defer allocator.free(response);
+
+    try result.writer().print("{s}", .{response});
+    const expected_response = try std.fmt.allocPrint(std.testing.allocator, "$8\r\n{s}\r\n", .{value});
+    defer std.testing.allocator.free(expected_response);
+
+    try testing.expectEqualSlices(u8, expected_response, result.items);
+}
+
+test "Command - Info - Master" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+    const allocator = gpa.allocator();
+
+    var cache = Cache.init(allocator, Role{
+        .Master = .{
+            .master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+            .master_repl_offset = 0,
+        },
+    });
+    defer cache.deinit();
+
+    var resp = Resp.init(allocator);
+    defer resp.deinit();
+
+    var result = ArrayList(u8).init(allocator);
+    defer result.deinit();
+
+    const response = try cache.handleInfoCommand();
+    defer allocator.free(response);
+
+    try result.writer().print("{s}", .{response});
+    const expected_response = "$77\r\nrole:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0\n\r\n";
+
+    try testing.expectEqualSlices(u8, expected_response, result.items);
+}
+
+test "Command - Info - Slave" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("leak occured");
+    const allocator = gpa.allocator();
+
+    var cache = Cache.init(allocator, Role{ .Slave = "" });
+    defer cache.deinit();
+
+    var resp = Resp.init(allocator);
+    defer resp.deinit();
+
+    var result = ArrayList(u8).init(allocator);
+    defer result.deinit();
+
+    const response = try cache.handleInfoCommand();
+    defer allocator.free(response);
+
+    try result.writer().print("{s}", .{response});
+    const expected_response = "$11\r\nrole:slave\r\n";
+
+    try testing.expectEqualSlices(u8, expected_response, result.items);
+}
+
+test "Command - Unknown" {
+    const command = Command.Unknown;
+    const expected_response = "-ERR unknown command\r\n";
+
+    try testCommand(command, expected_response);
+}
+./build.zig.zon
+.{
+    .name = "zig",
+    // This is a [Semantic Version](https://semver.org/).
+    // In a future version of Zig it will be used for package deduplication.
+    .version = "0.0.0",
+
+    // This field is optional.
+    // This is currently advisory only; Zig does not yet do anything
+    // with this value.
+    //.minimum_zig_version = "0.11.0",
+
+    // This field is optional.
+    // Each dependency must either provide a `url` and `hash`, or a `path`.
+    // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
+    // Once all dependencies are fetched, `zig build` no longer requires
+    // internet connectivity.
+    .dependencies = .{
+        // See `zig fetch --save <url>` for a command-line interface for adding dependencies.
+        //.example = .{
+        //    // When updating this field to a new URL, be sure to delete the corresponding
+        //    // `hash`, otherwise you are communicating that you expect to find the old hash at
+        //    // the new URL.
+        //    .url = "https://example.com/foo.tar.gz",
+        //
+        //    // This is computed from the file contents of the directory of files that is
+        //    // obtained after fetching `url` and applying the inclusion rules given by
+        //    // `paths`.
+        //    //
+        //    // This field is the source of truth; packages do not come from a `url`; they
+        //    // come from a `hash`. `url` is just one of many possible mirrors for how to
+        //    // obtain a package matching this `hash`.
+        //    //
+        //    // Uses the [multihash](https://multiformats.io/multihash/) format.
+        //    .hash = "...",
+        //
+        //    // When this is provided, the package is found in a directory relative to the
+        //    // build root. In this case the package's hash is irrelevant and therefore not
+        //    // computed. This field and `url` are mutually exclusive.
+        //    .path = "foo",
+
+        //    // When this is set to `true`, a package is declared to be lazily
+        //    // fetched. This makes the dependency only get fetched if it is
+        //    // actually used.
+        //    .lazy = false,
+        //},
+    },
+
+    // Specifies the set of files and directories that are included in this package.
+    // Only files and directories listed here are included in the `hash` that
+    // is computed for this package.
+    // Paths are relative to the build root. Use the empty string (`""`) to refer to
+    // the build root itself.
+    // A directory listed here means that all files within, recursively, are included.
+    .paths = .{
+        // This makes *all* files, recursively, included in this package. It is generally
+        // better to explicitly list the files and directories instead, to insure that
+        // fetching from tarballs, file system paths, and version control all result
+        // in the same contents hash.
+        "",
+        // For example...
+        //"build.zig",
+        //"build.zig.zon",
+        //"src",
+        //"LICENSE",
+        //"README.md",
+    },
+}

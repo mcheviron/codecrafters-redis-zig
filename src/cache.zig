@@ -5,15 +5,14 @@ const time = std.time;
 const Allocator = std.mem.Allocator;
 const HashMap = std.StringHashMap;
 const Mutex = std.Thread.Mutex;
-const Resp = @import("resp.zig").Resp;
-const Command = @import("resp.zig").Resp.Command;
-const Response = @import("resp.zig").Resp.Response;
+const RESP = @import("resp.zig");
+const Command = RESP.Command;
+const Response = RESP.Response;
 
 pub const Cache = struct {
     allocator: Allocator,
     cache: HashMap(Item),
     mutex: Mutex,
-    resp: Resp,
     role: Role,
 
     pub const MasterInfo = struct {
@@ -39,17 +38,15 @@ pub const Cache = struct {
             .allocator = allocator,
             .cache = HashMap(Item).init(allocator),
             .mutex = Mutex{},
-            .resp = Resp.init(allocator),
             .role = role,
         };
     }
 
     pub fn deinit(self: *Cache) void {
         self.cache.deinit();
-        self.resp.deinit();
     }
 
-    fn handleGetCommand(self: *Cache, key: []const u8) ![]const u8 {
+    pub fn handleGetCommand(self: *Cache, allocator: Allocator, key: []const u8) ![]const u8 {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -61,17 +58,17 @@ pub const Cache = struct {
                 if (now > exp) {
                     log.info("Key {s} has expired, removing from cache", .{key});
                     _ = self.cache.remove(key);
-                    return self.resp.encode(&[_]Response{Response{ .Get = null }});
+                    return RESP.encode(allocator, &[_]Response{Response{ .Get = null }});
                 }
             }
             log.info("Found value for key {s}: {s}", .{ key, item.value });
-            return self.resp.encode(&[_]Response{Response{ .Get = item.value }});
+            return RESP.encode(allocator, &[_]Response{Response{ .Get = item.value }});
         }
         log.info("Key {s} not found in cache", .{key});
-        return self.resp.encode(&[_]Response{Response{ .Get = null }});
+        return RESP.encode(allocator, &[_]Response{Response{ .Get = null }});
     }
 
-    fn handleSetCommand(self: *Cache, set: Resp.SetCommand) ![]const u8 {
+    pub fn handleSetCommand(self: *Cache, allocator: Allocator, set: RESP.SetCommand) ![]const u8 {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -81,10 +78,10 @@ pub const Cache = struct {
             .expiration = if (set.expiration) |exp| now + exp else null,
         });
         log.info("Key {s} set successfully", .{set.key});
-        return self.resp.encode(&[_]Response{Response.Set});
+        return RESP.encode(allocator, &[_]Response{Response.Set});
     }
 
-    fn handleInfoCommand(self: *Cache) ![]const u8 {
+    pub fn handleInfoCommand(self: *Cache, allocator: Allocator) ![]const u8 {
         const info_response = switch (self.role) {
             .Master => |master_info| Response{
                 .Info = Response.InfoResponse{
@@ -98,7 +95,7 @@ pub const Cache = struct {
                 .Info = Response.InfoResponse.Slave,
             },
         };
-        return self.resp.encode(&[_]Response{info_response});
+        return RESP.encode(allocator, &[_]Response{info_response});
     }
 
     pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
@@ -117,19 +114,19 @@ pub const Cache = struct {
             const data = buffer[0..bytes_read];
             // log.info("Data received: {s}", .{data});
 
-            const commandList = try self.resp.decode(data);
+            const commandList = try RESP.decode(self.allocator, data);
             defer self.allocator.free(commandList);
 
             for (commandList) |command| {
                 // log.info("Command: {}", .{command});
                 const response = blk: {
                     switch (command) {
-                        .Ping => break :blk try self.resp.encode(&[_]Response{Response.Pong}),
-                        .Echo => |message| break :blk try self.resp.encode(&[_]Response{Response{ .Echo = message }}),
-                        .Get => |key| break :blk try self.handleGetCommand(key),
-                        .Set => |set| break :blk try self.handleSetCommand(set),
-                        .Info => break :blk try self.handleInfoCommand(),
-                        .Unknown => break :blk try self.resp.encode(&[_]Response{Response.Unknown}),
+                        .Ping => break :blk try RESP.encode(self.allocator, &[_]Response{Response.Pong}),
+                        .Echo => |message| break :blk try RESP.encode(self.allocator, &[_]Response{Response{ .Echo = message }}),
+                        .Get => |key| break :blk try self.handleGetCommand(self.allocator, key),
+                        .Set => |set| break :blk try self.handleSetCommand(self.allocator, set),
+                        .Info => break :blk try self.handleInfoCommand(self.allocator),
+                        .Unknown => break :blk try RESP.encode(self.allocator, &[_]Response{Response.Unknown}),
                     }
                 };
                 defer self.allocator.free(response);
