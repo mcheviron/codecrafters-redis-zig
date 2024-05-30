@@ -13,6 +13,7 @@ pub const Command = union(enum) {
     Echo: []const u8,
     Get: []const u8,
     Set: SetCommand,
+    ReplConf,
 };
 
 pub const Response = union(enum) {
@@ -23,7 +24,7 @@ pub const Response = union(enum) {
     Info: InfoResponse,
     Unknown,
     Ping,
-    ReplConf: ReplConfig,
+    ReplConf: ?ReplConfig,
     Psync: Psync,
 
     pub const InfoResponse = union(enum) {
@@ -158,6 +159,9 @@ fn parseCommand(args: [][]const u8) !Command {
         return Command{ .Set = .{ .key = key, .value = value, .expiration = expiration } };
     } else if (eqlIgnoreCase(args[0], "info")) {
         return Command.Info;
+    } else if (eqlIgnoreCase(args[0], "replconf")) {
+        if (args.len != 3 and args.len != 5) return ParseError.InvalidNumArgs;
+        return Command.ReplConf;
     }
 
     return Command.Unknown;
@@ -215,27 +219,31 @@ fn encodePing(allocator: Allocator) ![]const u8 {
     return encodeBulkStrings(allocator, strs[0..]);
 }
 
-fn encodeReplConf(allocator: Allocator, replconf: Response.ReplConfig) ![]const u8 {
-    var result = ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+fn encodeReplConf(allocator: Allocator, replconf: ?Response.ReplConfig) ![]const u8 {
+    if (replconf) |conf| {
+        var result = ArrayList(u8).init(allocator);
+        errdefer result.deinit();
 
-    const writer = result.writer();
-    var buf: [20]u8 = undefined;
+        const writer = result.writer();
+        var buf: [20]u8 = undefined;
 
-    switch (replconf) {
-        .listening_port => |port| {
-            var strs = [_][]const u8{ "REPLCONF", "listening-port", try std.fmt.bufPrint(&buf, "{d}", .{port}) };
-            const encoded = try encodeBulkStrings(allocator, strs[0..]);
-            try writer.print("{s}", .{encoded});
-        },
-        .capability => |capa| {
-            var strs = [_][]const u8{ "REPLCONF", "capa", capa };
-            const encoded = try encodeBulkStrings(allocator, strs[0..]);
-            try writer.print("{s}", .{encoded});
-        },
+        switch (conf) {
+            .listening_port => |port| {
+                var strs = [_][]const u8{ "REPLCONF", "listening-port", try std.fmt.bufPrint(&buf, "{d}", .{port}) };
+                const encoded = try encodeBulkStrings(allocator, strs[0..]);
+                try writer.print("{s}", .{encoded});
+            },
+            .capability => |capa| {
+                var strs = [_][]const u8{ "REPLCONF", "capa", capa };
+                const encoded = try encodeBulkStrings(allocator, strs[0..]);
+                try writer.print("{s}", .{encoded});
+            },
+        }
+
+        return result.toOwnedSlice();
+    } else {
+        return encodeSimpleString(allocator, "+OK\r\n");
     }
-
-    return result.toOwnedSlice();
 }
 
 fn encodePsync(allocator: Allocator, psync: Response.Psync) ![]const u8 {

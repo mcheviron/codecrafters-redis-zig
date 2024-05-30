@@ -134,6 +134,7 @@ pub const Cache = struct {
                         .Get => |key| break :blk try self.handleGetCommand(self.allocator, key),
                         .Set => |set| break :blk try self.handleSetCommand(self.allocator, set),
                         .Info => break :blk try self.handleInfoCommand(self.allocator),
+                        .ReplConf => break :blk try RESP.encode(self.allocator, &[_]Response{Response{ .ReplConf = null }}),
                         .Unknown => break :blk try RESP.encode(self.allocator, &[_]Response{Response.Unknown}),
                     }
                 };
