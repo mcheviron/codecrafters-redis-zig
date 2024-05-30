@@ -24,6 +24,7 @@ pub const Response = union(enum) {
     Unknown,
     Ping,
     ReplConf: ReplConfig,
+    Psync: Psync,
 
     pub const InfoResponse = union(enum) {
         Master: struct {
@@ -36,6 +37,11 @@ pub const Response = union(enum) {
     pub const ReplConfig = union(enum) {
         listening_port: u16,
         capability: []const u8,
+    };
+
+    pub const Psync = union(enum) {
+        init: bool,
+        other,
     };
 };
 
@@ -53,13 +59,6 @@ pub const ParseError = error{
     InvalidCommand,
 };
 
-/// Decodes the provided input string into a list of RESP commands.
-///
-/// The input string is expected to be in the Redis protocol format.
-/// The function parses the input, validates the format, and returns
-/// an owned slice of the parsed commands.
-///
-/// The returned slice must be freed by the caller.
 pub fn decode(allocator: Allocator, input: []const u8) ![]Command {
     var commands = ArrayList(Command).init(allocator);
     errdefer commands.deinit();
@@ -113,9 +112,6 @@ pub fn decode(allocator: Allocator, input: []const u8) ![]Command {
     return commands.toOwnedSlice();
 }
 
-/// Encodes a list of RESP commands into a byte slice.
-///
-/// The returned slice must be freed by the caller.
 pub fn encode(allocator: Allocator, responses: []const Response) ![]const u8 {
     var result = ArrayList(u8).init(allocator);
     errdefer result.deinit();
@@ -131,6 +127,7 @@ pub fn encode(allocator: Allocator, responses: []const Response) ![]const u8 {
             .Unknown => try encodeUnknownCommand(allocator),
             .Ping => try encodePing(allocator),
             .ReplConf => |replconf| try encodeReplConf(allocator, replconf),
+            .Psync => |psync| try encodePsync(allocator, psync),
         };
         try writer.print("{s}", .{encoded_response});
     }
@@ -239,6 +236,16 @@ fn encodeReplConf(allocator: Allocator, replconf: Response.ReplConfig) ![]const 
     }
 
     return result.toOwnedSlice();
+}
+
+fn encodePsync(allocator: Allocator, psync: Response.Psync) ![]const u8 {
+    return switch (psync) {
+        .init => blk: {
+            var strs = [_][]const u8{ "PSYNC", "?", "-1" };
+            break :blk encodeBulkStrings(allocator, strs[0..]);
+        },
+        .other => encodeError(allocator, "unsupported psync command"),
+    };
 }
 
 fn encodeSimpleString(allocator: Allocator, str: []const u8) ![]const u8 {

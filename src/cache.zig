@@ -14,6 +14,7 @@ pub const Cache = struct {
     cache: HashMap(Item),
     mutex: Mutex,
     role: Role,
+    replication_id: ?[]const u8,
 
     pub const MasterInfo = struct {
         master_replid: []const u8,
@@ -45,6 +46,7 @@ pub const Cache = struct {
             .cache = HashMap(Item).init(allocator),
             .mutex = Mutex{},
             .role = role,
+            .replication_id = null,
         };
     }
 

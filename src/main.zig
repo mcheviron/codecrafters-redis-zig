@@ -54,13 +54,12 @@ pub fn main() !void {
         };
     };
 
+    var cache = Cache.init(allocator, role);
+    defer cache.deinit();
+
     if (role == .Slave) {
-        const slave_thread = try Thread.spawn(.{}, startClient, .{ allocator, role.Slave });
+        const slave_thread = try Thread.spawn(.{}, startClient, .{ allocator, role.Slave, &cache });
         slave_thread.detach();
-        // var parts = std.mem.splitSequence(u8, role.Slave, " ");
-        // while (parts.next()) |part| {
-        //     log.info("{s}", .{part});
-        // }
     }
 
     const address = try net.Address.resolveIp("127.0.0.1", port);
@@ -70,9 +69,6 @@ pub fn main() !void {
         .reuse_address = true,
     });
     defer listener.deinit();
-
-    var cache = Cache.init(allocator, role);
-    defer cache.deinit();
 
     while (true) {
         const connection = try listener.accept();
@@ -86,7 +82,7 @@ fn startServer(connection: net.Server.Connection, cache: *Cache) !void {
     try cache.handleConnection(connection);
 }
 
-fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo) !void {
+fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Cache) !void {
     const stream = try net.tcpConnectToHost(allocator, slave_info.master_address, slave_info.master_port);
     defer stream.close();
 
@@ -94,6 +90,7 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo) !void {
         RESP.Response.Ping,
         RESP.Response{ .ReplConf = .{ .listening_port = slave_info.own_port } },
         RESP.Response{ .ReplConf = .{ .capability = "psync2" } },
+        RESP.Response{ .Psync = .{ .init = true } },
     };
 
     const ping = try RESP.encode(allocator, responses[0..1]);
@@ -125,6 +122,24 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo) !void {
     response = buffer[0..bytes_read];
 
     if (!mem.eql(u8, response, ok_response)) {
+        log.err("Unexpected response from master: {s}", .{response});
+        return;
+    }
+
+    const psync = try RESP.encode(allocator, responses[3..]);
+    defer allocator.free(psync);
+
+    try stream.writeAll(psync);
+
+    buffer = undefined;
+    bytes_read = try stream.read(&buffer);
+    response = buffer[0..bytes_read];
+    if (mem.startsWith(u8, response, "+FULLRESYNC")) {
+        var parts = mem.splitSequence(u8, response, " ");
+        _ = parts.next(); // skip "+FULLRESYNC"
+        const repl_id = mem.trim(u8, parts.next().?, " \r\n");
+        cache.replication_id = repl_id;
+    } else {
         log.err("Unexpected response from master: {s}", .{response});
         return;
     }
