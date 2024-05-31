@@ -9,6 +9,8 @@ const RESP = @import("resp.zig");
 const Command = RESP.Command;
 const Response = RESP.Response;
 
+const EMPTY_RDB_HEX = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+
 pub const Cache = struct {
     allocator: Allocator,
     cache: HashMap(Item),
@@ -97,6 +99,15 @@ pub const Cache = struct {
         return RESP.encode(allocator, &[_]Response{info_response});
     }
 
+    pub fn encodeRDB(_: *Cache, allocator: Allocator, file: []const u8) ![]const u8 {
+        const buf = try allocator.alloc(u8, file.len / 2);
+        defer allocator.free(buf);
+
+        const decoded = try std.fmt.hexToBytes(buf, file);
+        const encoded_file = try std.fmt.allocPrint(allocator, "${d}\r\n{s}", .{ decoded.len, decoded });
+        return encoded_file;
+    }
+
     pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
         var buffer: [1024]u8 = undefined;
         var reader = connection.stream.reader();
@@ -126,6 +137,13 @@ pub const Cache = struct {
                 };
                 defer self.allocator.free(response);
                 try writer.writeAll(response);
+
+                if (command == .Psync) {
+                    const file = try self.encodeRDB(self.allocator, EMPTY_RDB_HEX);
+                    defer self.allocator.free(file);
+
+                    try writer.writeAll(file);
+                }
             }
         }
     }

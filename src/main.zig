@@ -86,6 +86,10 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Ca
     const stream = try net.tcpConnectToHost(allocator, slave_info.master_address, slave_info.master_port);
     defer stream.close();
 
+    try handshake(allocator, stream, slave_info, cache);
+}
+
+fn handshake(allocator: mem.Allocator, stream: net.Stream, slave_info: Cache.SlaveInfo, cache: *Cache) !void {
     const responses = [_]RESP.Response{
         RESP.Response.Ping,
         RESP.Response{ .ReplConf = .{ .listening_port = slave_info.own_port } },
@@ -137,7 +141,5 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Ca
         _ = parts.next(); // skip "+FULLRESYNC"
         const repl_id = mem.trim(u8, parts.next().?, " \r\n");
         cache.replication_id = repl_id;
-    } else {
-        return;
-    }
+    } else return;
 }
