@@ -14,6 +14,10 @@ pub const Command = union(enum) {
     Get: []const u8,
     Set: SetCommand,
     ReplConf,
+    Psync: struct {
+        master_replid: []const u8,
+        master_repl_offset: u64,
+    },
 };
 
 pub const Response = union(enum) {
@@ -41,8 +45,17 @@ pub const Response = union(enum) {
     };
 
     pub const Psync = union(enum) {
-        init: bool,
-        other,
+        Master: struct {
+            master_replid: []const u8,
+            master_repl_offset: u64,
+        },
+        Slave: union(enum) {
+            Init,
+            Latest: struct {
+                master_replid: []const u8,
+                master_repl_offset: u64,
+            },
+        },
     };
 };
 
@@ -162,6 +175,11 @@ fn parseCommand(args: [][]const u8) !Command {
     } else if (eqlIgnoreCase(args[0], "replconf")) {
         if (args.len != 3 and args.len != 5) return ParseError.InvalidNumArgs;
         return Command.ReplConf;
+    } else if (eqlIgnoreCase(args[0], "psync")) {
+        if (args.len != 3) return ParseError.InvalidNumArgs;
+        const master_replid = args[1];
+        const master_repl_offset = std.fmt.parseInt(u64, args[2], 10) catch 0;
+        return Command{ .Psync = .{ .master_replid = master_replid, .master_repl_offset = master_repl_offset } };
     }
 
     return Command.Unknown;
@@ -248,11 +266,21 @@ fn encodeReplConf(allocator: Allocator, replconf: ?Response.ReplConfig) ![]const
 
 fn encodePsync(allocator: Allocator, psync: Response.Psync) ![]const u8 {
     return switch (psync) {
-        .init => blk: {
-            var strs = [_][]const u8{ "PSYNC", "?", "-1" };
-            break :blk encodeBulkStrings(allocator, strs[0..]);
+        .Master => |master_info| blk: {
+            var buf: [1024]u8 = undefined;
+            const full_info = try std.fmt.bufPrint(&buf, "+FULLRESYNC {s} {d}\r\n", .{ master_info.master_replid, master_info.master_repl_offset });
+            break :blk encodeSimpleString(allocator, full_info);
         },
-        .other => encodeError(allocator, "unsupported psync command"),
+        .Slave => |slave_info| blk: {
+            const encoded = switch (slave_info) {
+                .Init => encodeBulkStrings(allocator, &[_][]const u8{ "PSYNC", "?", "-1" }),
+                .Latest => |host_info| {
+                    _ = host_info;
+                    @panic("TODO: implement me!");
+                },
+            };
+            break :blk encoded;
+        },
     };
 }
 

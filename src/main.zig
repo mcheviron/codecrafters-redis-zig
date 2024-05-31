@@ -90,7 +90,7 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Ca
         RESP.Response.Ping,
         RESP.Response{ .ReplConf = .{ .listening_port = slave_info.own_port } },
         RESP.Response{ .ReplConf = .{ .capability = "psync2" } },
-        RESP.Response{ .Psync = .{ .init = true } },
+        RESP.Response{ .Psync = .{ .Slave = .Init } },
     };
 
     const ping = try RESP.encode(allocator, responses[0..1]);
@@ -103,7 +103,6 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Ca
     var response = buffer[0..bytes_read];
 
     if (!mem.eql(u8, response, "+PONG\r\n")) {
-        log.err("Unexpected response from server: {s}", .{response});
         return;
     }
 
@@ -122,7 +121,6 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Ca
     response = buffer[0..bytes_read];
 
     if (!mem.eql(u8, response, ok_response)) {
-        log.err("Unexpected response from master: {s}", .{response});
         return;
     }
 
@@ -140,7 +138,6 @@ fn startClient(allocator: mem.Allocator, slave_info: Cache.SlaveInfo, cache: *Ca
         const repl_id = mem.trim(u8, parts.next().?, " \r\n");
         cache.replication_id = repl_id;
     } else {
-        log.err("Unexpected response from master: {s}", .{response});
         return;
     }
 }

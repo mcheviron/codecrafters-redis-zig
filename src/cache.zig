@@ -37,16 +37,13 @@ pub const Cache = struct {
         expiration: ?u64,
     };
 
-    pub fn init(
-        allocator: Allocator,
-        role: Role,
-    ) Cache {
+    pub fn init(allocator: Allocator, role: Role) Cache {
         return Cache{
             .allocator = allocator,
             .cache = HashMap(Item).init(allocator),
             .mutex = Mutex{},
             .role = role,
-            .replication_id = null,
+            .replication_id = if (role == .Master) role.Master.master_replid else null,
         };
     }
 
@@ -59,20 +56,15 @@ pub const Cache = struct {
         defer self.mutex.unlock();
 
         if (self.cache.get(key)) |item| {
-            log.info("Value: {s}, {?}", .{ item.value, item.expiration });
             if (item.expiration) |exp| {
                 const now: u64 = @intCast(time.milliTimestamp());
-                log.info("Now: {}", .{now});
                 if (now > exp) {
-                    log.info("Key {s} has expired, removing from cache", .{key});
                     _ = self.cache.remove(key);
                     return RESP.encode(allocator, &[_]Response{Response{ .Get = null }});
                 }
             }
-            log.info("Found value for key {s}: {s}", .{ key, item.value });
             return RESP.encode(allocator, &[_]Response{Response{ .Get = item.value }});
         }
-        log.info("Key {s} not found in cache", .{key});
         return RESP.encode(allocator, &[_]Response{Response{ .Get = null }});
     }
 
@@ -85,7 +77,6 @@ pub const Cache = struct {
             .value = set.value,
             .expiration = if (set.expiration) |exp| now + exp else null,
         });
-        log.info("Key {s} set successfully", .{set.key});
         return RESP.encode(allocator, &[_]Response{Response.Set});
     }
 
@@ -107,40 +98,33 @@ pub const Cache = struct {
     }
 
     pub fn handleConnection(self: *Cache, connection: std.net.Server.Connection) !void {
-        // log.info("New connection established", .{});
-
         var buffer: [1024]u8 = undefined;
         var reader = connection.stream.reader();
         var writer = connection.stream.writer();
 
         while (true) {
-            // log.info("Waiting to read data from connection", .{});
             const bytes_read = try reader.read(&buffer);
-            // log.info("Bytes read: {}", .{bytes_read});
             if (bytes_read == 0) break;
 
             const data = buffer[0..bytes_read];
-            // log.info("Data received: {s}", .{data});
+            const command_list = try RESP.decode(self.allocator, data);
+            defer self.allocator.free(command_list);
 
-            const commandList = try RESP.decode(self.allocator, data);
-            defer self.allocator.free(commandList);
-
-            for (commandList) |command| {
-                // log.info("Command: {}", .{command});
-                const response = blk: {
-                    switch (command) {
-                        .Ping => break :blk try RESP.encode(self.allocator, &[_]Response{Response.Pong}),
-                        .Echo => |message| break :blk try RESP.encode(self.allocator, &[_]Response{Response{ .Echo = message }}),
-                        .Get => |key| break :blk try self.handleGetCommand(self.allocator, key),
-                        .Set => |set| break :blk try self.handleSetCommand(self.allocator, set),
-                        .Info => break :blk try self.handleInfoCommand(self.allocator),
-                        .ReplConf => break :blk try RESP.encode(self.allocator, &[_]Response{Response{ .ReplConf = null }}),
-                        .Unknown => break :blk try RESP.encode(self.allocator, &[_]Response{Response.Unknown}),
-                    }
+            for (command_list) |command| {
+                const response = try switch (command) {
+                    .Ping => RESP.encode(self.allocator, &[_]Response{Response.Pong}),
+                    .Echo => |message| RESP.encode(self.allocator, &[_]Response{Response{ .Echo = message }}),
+                    .Get => |key| self.handleGetCommand(self.allocator, key),
+                    .Set => |set| self.handleSetCommand(self.allocator, set),
+                    .Info => self.handleInfoCommand(self.allocator),
+                    .ReplConf => RESP.encode(self.allocator, &[_]Response{Response{ .ReplConf = null }}),
+                    .Psync => |psync| RESP.encode(self.allocator, &[_]Response{Response{ .Psync = .{ .Master = .{
+                        .master_repl_offset = psync.master_repl_offset,
+                        .master_replid = self.replication_id orelse "",
+                    } } }}),
+                    .Unknown => RESP.encode(self.allocator, &[_]Response{Response.Unknown}),
                 };
                 defer self.allocator.free(response);
-                // const response_type_info = @typeInfo(@TypeOf(response));
-                // log.info("Response type: {}", .{response_type_info});
                 try writer.writeAll(response);
             }
         }
